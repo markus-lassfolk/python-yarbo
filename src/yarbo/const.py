@@ -6,8 +6,21 @@ local and cloud MQTT transports.
 
 Discovery sources:
 - Blutter ASM analysis of the Flutter app (libapp.so)
-- Live packet captures on the local EMQX broker at 192.168.1.24
+- Live packet captures on the local EMQX broker at 192.168.1.24 / 192.168.1.55
 - yarbo-reversing/docs/COMMAND_CATALOGUE.md
+
+Transport support matrix
+------------------------
++---------------------------+-------------+--------------+
+| Transport                 | Implemented | Notes        |
++===========================+=============+==============+
+| Local MQTT (1883)         | ✅ Yes      | Primary      |
+| Local WebSocket (8083)    | ❌ No       | TODO         |
+| Local REST (8088)         | ❌ No       | TODO         |
+| Local TCP JSON (22220)    | ❌ No       | TODO         |
+| Cloud REST (HTTPS)        | ✅ Yes      | JWT auth     |
+| Cloud MQTT (TLS/8883)     | ❌ No       | TODO         |
++---------------------------+-------------+--------------+
 """
 
 from __future__ import annotations
@@ -16,13 +29,16 @@ from __future__ import annotations
 # Local broker (same WiFi as robot)
 # ---------------------------------------------------------------------------
 
-#: Default local EMQX broker address (Yarbo's embedded broker).
+#: Default local EMQX broker address (Yarbo's embedded broker, HaLow network).
 LOCAL_BROKER_DEFAULT = "192.168.1.24"
+
+#: Secondary local EMQX broker IP (also observed in the wild on HaLow networks).
+LOCAL_BROKER_SECONDARY = "192.168.1.55"
 
 #: Local broker plaintext port.
 LOCAL_PORT = 1883
 
-#: Local broker WebSocket port.
+#: Local broker WebSocket port (not yet implemented in this library).
 LOCAL_PORT_WS = 8083
 
 # ---------------------------------------------------------------------------
@@ -66,8 +82,20 @@ TOPIC_LEAF_DEVICE_INFO = "deviceinfo_feedback"
 TOPIC_LEAF_LOG_FEEDBACK = "log_feedback"
 TOPIC_LEAF_A_PROPERTY_1 = "a_property_1_feedback"
 
+# Live-confirmed telemetry leaves (zlib JSON ~1-2 Hz)
+TOPIC_LEAF_DEVICE_MSG = "DeviceMSG"
+"""Full telemetry payload: BatteryMSG, StateMSG, RTKMSG, CombinedOdom, etc."""
+
+# Live-confirmed heartbeat leaf (plain JSON ~1 Hz)
+TOPIC_LEAF_HEART_BEAT = "heart_beat"
+"""Heartbeat: plain JSON ``{"working_state": 0|1}``.
+NOTE: ``heart_beat`` is NOT zlib-compressed — the codec's plain-JSON
+fallback handles this transparently."""
+
 #: All feedback topics to subscribe to (leaf names only — expand with TOPIC_DEVICE_TMPL).
 ALL_FEEDBACK_LEAVES: list[str] = [
+    TOPIC_LEAF_DEVICE_MSG,
+    TOPIC_LEAF_HEART_BEAT,
     TOPIC_LEAF_DATA_FEEDBACK,
     TOPIC_LEAF_PLAN_FEEDBACK,
     TOPIC_LEAF_RECHARGE_FEEDBACK,
@@ -116,3 +144,54 @@ REST_BASE_URL = "https://4zx17x5q7l.execute-api.us-east-1.amazonaws.com/Stage"
 
 #: MQTT policy key API gateway.
 POLICY_KEY_BASE_URL = "https://ms0frm2hkf.execute-api.us-east-1.amazonaws.com/dev/app"
+
+
+# ---------------------------------------------------------------------------
+# Topic helper
+# ---------------------------------------------------------------------------
+
+
+class Topic:
+    """
+    Helper for building and decomposing Yarbo MQTT topic strings.
+
+    All Yarbo topics follow the pattern::
+
+        snowbot/{sn}/app/{cmd}       — app → robot (publish)
+        snowbot/{sn}/device/{leaf}   — robot → app (subscribe)
+
+    Example::
+
+        t = Topic("24400102L8HO5227")
+        t.app("light_ctrl")            # "snowbot/24400102L8HO5227/app/light_ctrl"
+        t.device("data_feedback")      # "snowbot/24400102L8HO5227/device/data_feedback"
+        Topic.parse("snowbot/SN/device/data_feedback")  # ("SN", "data_feedback")
+    """
+
+    def __init__(self, sn: str) -> None:
+        self._sn = sn
+
+    def app(self, cmd: str) -> str:
+        """Build an app→robot publish topic."""
+        return TOPIC_APP_TMPL.format(sn=self._sn, cmd=cmd)
+
+    def device(self, feedback: str) -> str:
+        """Build a robot→app subscribe topic."""
+        return TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=feedback)
+
+    @staticmethod
+    def parse(topic: str) -> tuple[str, str]:
+        """
+        Extract ``(sn, leaf)`` from a full topic string.
+
+        Returns ``("", "")`` if the topic doesn't match the expected pattern.
+        """
+        parts = topic.split("/")
+        if len(parts) >= 4 and parts[0] == "snowbot":
+            return parts[1], parts[3]
+        return "", ""
+
+    @staticmethod
+    def leaf(topic: str) -> str:
+        """Return the leaf (last) component of a topic string."""
+        return topic.rsplit("/", 1)[-1]
