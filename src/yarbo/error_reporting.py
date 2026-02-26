@@ -1,6 +1,7 @@
 """GlitchTip/Sentry error reporting for python-yarbo."""
 
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +57,9 @@ def init_error_reporting(
 
 def _scrub_event(event: dict, hint: dict) -> dict:  # type: ignore[type-arg]
     """Remove sensitive data before sending."""
-    # Strip MQTT credentials, tokens, passwords from breadcrumbs and extras
     key_keywords = ("password", "token", "secret", "credential", "key")
     message_keywords = ("password", "token", "secret", "credential")
+    key_pattern = re.compile(r"(?:_|api|access|auth|private)key", re.IGNORECASE)
 
     if "extra" in event:
         for key in list(event["extra"]):
@@ -69,7 +70,7 @@ def _scrub_event(event: dict, hint: dict) -> dict:  # type: ignore[type-arg]
         for breadcrumb in event["breadcrumbs"]["values"]:
             if "message" in breadcrumb:
                 msg = str(breadcrumb["message"])
-                if any(s in msg.lower() for s in message_keywords):
+                if any(s in msg.lower() for s in message_keywords) or key_pattern.search(msg):
                     breadcrumb["message"] = "[REDACTED]"
             if "data" in breadcrumb and isinstance(breadcrumb["data"], dict):
                 for key in list(breadcrumb["data"]):
