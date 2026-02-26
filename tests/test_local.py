@@ -211,6 +211,45 @@ class TestYarboLocalClientTelemetry:
             break  # only need one
         assert len(items) == 1
 
+    async def test_watch_telemetry_merges_plan_feedback(self):
+        """plan_feedback data is merged into the next DeviceMSG telemetry."""
+        from unittest.mock import patch as _patch
+
+        with _patch("yarbo.local.MqttTransport") as MockT:  # noqa: N806
+            instance = MagicMock()
+            instance.connect = AsyncMock()
+            instance.is_connected = True
+            instance.add_reconnect_callback = MagicMock()
+
+            async def fake_stream():
+                yield TelemetryEnvelope(
+                    kind="plan_feedback",
+                    payload={"planId": "p-123", "state": "running", "areaCovered": 55.0, "duration": 120.0},
+                    topic="snowbot/TEST/device/plan_feedback",
+                )
+                yield TelemetryEnvelope(
+                    kind="DeviceMSG",
+                    payload={"BatteryMSG": {"capacity": 70}, "StateMSG": {"working_state": 1}},
+                    topic="snowbot/TEST/device/DeviceMSG",
+                )
+
+            instance.telemetry_stream = fake_stream
+            MockT.return_value = instance
+
+            client = YarboLocalClient(broker="192.168.1.24", sn="TEST")
+            await client.connect()
+            items = []
+            async for t in client.watch_telemetry():
+                items.append(t)
+                break
+            assert len(items) == 1
+            t = items[0]
+            assert t.plan_id == "p-123"
+            assert t.plan_state == "running"
+            assert t.area_covered == pytest.approx(55.0)
+            assert t.duration == pytest.approx(120.0)
+            assert t.battery == 70
+
 
 @pytest.mark.asyncio
 class TestYarboLocalClientPlanManagement:

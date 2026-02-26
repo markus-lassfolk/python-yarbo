@@ -256,6 +256,19 @@ class YarboTelemetry:
     machine_controller: int | None = None
     """Active controller identifier. Source: ``StateMSG.machine_controller``."""
 
+    # Plan feedback fields (merged from plan_feedback topic)
+    plan_id: str | None = None
+    """Active plan UUID. Populated from ``plan_feedback`` messages."""
+
+    plan_state: str | None = None
+    """Current plan execution state (e.g. ``"running"``, ``"paused"``). From ``plan_feedback``."""
+
+    area_covered: float | None = None
+    """Area covered so far in the active plan (m²). From ``plan_feedback``."""
+
+    duration: float | None = None
+    """Elapsed plan duration in seconds. From ``plan_feedback``."""
+
     raw: dict[str, Any] = field(default_factory=dict)
     """Complete raw DeviceMSG dict."""
 
@@ -375,6 +388,28 @@ class YarboTelemetry:
             on_going_recharging=on_going_recharging,
             planning_paused=planning_paused,
             machine_controller=state_msg.get("machine_controller") if state_msg else None,
+            raw=d,
+        )
+
+    @classmethod
+    def from_plan_feedback(cls, d: dict[str, Any]) -> YarboTelemetry:
+        """Parse a ``plan_feedback`` MQTT message into a partial :class:`YarboTelemetry`.
+
+        Only the plan-specific fields are populated; all robot-state fields
+        (battery, position, etc.) are left at their defaults (``None``/``""``)
+        and should be merged with data from a ``DeviceMSG`` message.
+
+        Args:
+            d: Decoded ``plan_feedback`` payload dict.
+
+        Returns:
+            :class:`YarboTelemetry` with plan tracking fields populated.
+        """
+        return cls(
+            plan_id=d.get("planId"),
+            plan_state=d.get("state"),
+            area_covered=d.get("areaCovered"),
+            duration=d.get("duration"),
             raw=d,
         )
 

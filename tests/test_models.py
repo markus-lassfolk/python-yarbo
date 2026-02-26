@@ -194,6 +194,37 @@ class TestYarboTelemetry:
         assert t.machine_controller == 1
 
 
+class TestYarboTelemetryPlanFeedback:
+    def test_from_plan_feedback_basic(self):
+        d = {
+            "planId": "plan-abc",
+            "state": "running",
+            "areaCovered": 120.5,
+            "duration": 300.0,
+        }
+        t = YarboTelemetry.from_plan_feedback(d)
+        assert t.plan_id == "plan-abc"
+        assert t.plan_state == "running"
+        assert t.area_covered == pytest.approx(120.5)
+        assert t.duration == pytest.approx(300.0)
+        # Non-plan fields default to None
+        assert t.battery is None
+        assert t.sn == ""
+
+    def test_from_plan_feedback_missing_fields(self):
+        t = YarboTelemetry.from_plan_feedback({})
+        assert t.plan_id is None
+        assert t.plan_state is None
+        assert t.area_covered is None
+        assert t.duration is None
+
+    def test_plan_fields_none_in_device_msg(self):
+        """DeviceMSG by itself has no plan tracking fields."""
+        t = YarboTelemetry.from_dict({"BatteryMSG": {"capacity": 80}})
+        assert t.plan_id is None
+        assert t.plan_state is None
+
+
 class TestHeadType:
     def test_enum_values(self):
         assert HeadType.Snow == 0
