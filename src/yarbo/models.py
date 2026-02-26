@@ -270,12 +270,18 @@ class YarboTelemetry:
             if len(parts) >= 2:
                 sn = parts[1]
 
-        # Coerce led: live protocol delivers it as a string (e.g. "69666")
+        # Coerce led: live protocol delivers it as a string (e.g. "69666").
+        # Guard against non-numeric firmware values (e.g. "", "off") by falling
+        # back to None rather than crashing the entire telemetry parsing path.
         raw_led = d.get("led")
-        led: int | None = None
-        if raw_led is not None:
-            with contextlib.suppress(ValueError, TypeError):
+        led: int | None
+        if raw_led is None:
+            led = None
+        else:
+            try:
                 led = int(raw_led)
+            except (ValueError, TypeError):
+                led = None
 
         return cls(
             sn=sn,

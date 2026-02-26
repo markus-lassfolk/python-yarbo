@@ -42,6 +42,7 @@ from .const import (
     DEFAULT_CMD_TIMEOUT,
     LOCAL_BROKER_DEFAULT,
     LOCAL_PORT,
+    TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
     TOPIC_LEAF_DEVICE_MSG,
 )
@@ -167,9 +168,9 @@ class YarboLocalClient:
         try:
             await self._transport.publish("get_controller", {})
         except Exception:
-            # If publish fails, remove the orphaned queue before re-raising
-            with contextlib.suppress(ValueError):
-                self._transport._message_queues.remove(wait_queue)
+            # publish() failed — wait_for_message's finally block never runs, so
+            # we must release the pre-registered queue here to prevent a leak.
+            self._transport.release_queue(wait_queue)
             raise
         msg = await self._transport.wait_for_message(
             timeout=DEFAULT_CMD_TIMEOUT,
