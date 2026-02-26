@@ -194,6 +194,30 @@ class TestYarboTelemetry:
         assert t.machine_controller == 1
 
 
+class TestYarboTelemetryAliases:
+    """Tests for battery_capacity and serial_number aliases (Issue #16)."""
+
+    def test_battery_capacity_alias(self, sample_telemetry_dict):
+        t = YarboTelemetry.from_dict(sample_telemetry_dict)
+        assert t.battery_capacity == t.battery
+        assert t.battery_capacity == 83
+
+    def test_battery_capacity_none(self):
+        t = YarboTelemetry.from_dict({})
+        assert t.battery_capacity is None
+
+    def test_serial_number_alias(self):
+        t = YarboTelemetry.from_dict(
+            {}, topic="snowbot/24400102L8HO5227/device/DeviceMSG"
+        )
+        assert t.serial_number == "24400102L8HO5227"
+        assert t.serial_number == t.sn
+
+    def test_serial_number_from_payload(self):
+        t = YarboTelemetry.from_dict({"sn": "MYSN"})
+        assert t.serial_number == "MYSN"
+
+
 class TestYarboTelemetryPlanFeedback:
     def test_from_plan_feedback_basic(self):
         d = {
