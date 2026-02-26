@@ -47,7 +47,7 @@ from .const import (
     TOPIC_LEAF_PLAN_FEEDBACK,
 )
 from .exceptions import YarboNotControllerError, YarboTimeoutError
-from .models import YarboCommandResult, YarboLightState, YarboTelemetry
+from .models import YarboCommandResult, YarboLightState, YarboSchedule, YarboTelemetry
 from .mqtt import MqttTransport
 
 if TYPE_CHECKING:
@@ -440,6 +440,70 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         return await self._publish_and_wait("cmd_recharge", {})
+
+    # ------------------------------------------------------------------
+    # Schedule management
+    # ------------------------------------------------------------------
+
+    async def list_schedules(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> list[YarboSchedule]:
+        """Fetch the list of saved schedules from the robot.
+
+        Sends ``read_all_schedule`` and waits for the ``data_feedback`` response.
+
+        Args:
+            timeout: Maximum wait time in seconds (default 5.0).
+
+        Returns:
+            List of :class:`~yarbo.models.YarboSchedule` objects.
+            Returns an empty list on timeout.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("read_all_schedule", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="read_all_schedule",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return []
+        data: dict[str, Any] = msg.get("data", {}) or {}
+        schedules_raw: list[Any] = data.get("scheduleList", data.get("schedules", []))
+        return [YarboSchedule.from_dict(s) for s in schedules_raw]
+
+    async def set_schedule(self, schedule: YarboSchedule) -> YarboCommandResult:
+        """Save or update a schedule on the robot.
+
+        Args:
+            schedule: :class:`~yarbo.models.YarboSchedule` to save.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("save_schedule", schedule.to_dict())
+
+    async def delete_schedule(self, schedule_id: str) -> YarboCommandResult:
+        """Delete a schedule by its ID.
+
+        Args:
+            schedule_id: UUID of the schedule to delete.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("del_schedule", {"scheduleId": schedule_id})
 
     # ------------------------------------------------------------------
     # Raw publish (escape hatch)

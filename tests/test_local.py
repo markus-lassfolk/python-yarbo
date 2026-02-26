@@ -324,3 +324,70 @@ class TestYarboLocalClientPlanManagement:
         client._controller_acquired = True
         with pytest.raises(YarboTimeoutError):
             await client.start_plan("p1")
+
+
+@pytest.mark.asyncio
+class TestYarboLocalClientScheduleManagement:
+    """Tests for schedule management API (Issue #14)."""
+
+    async def test_list_schedules_empty(self, mock_transport):
+        """list_schedules returns empty list on timeout."""
+        mock_transport.wait_for_message = AsyncMock(return_value=None)
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        result = await client.list_schedules(timeout=0.1)
+        assert result == []
+
+    async def test_list_schedules_returns_schedule_objects(self, mock_transport):
+        schedules_data = [
+            {"scheduleId": "s1", "planId": "p1", "enabled": True, "weekdays": [1, 3]},
+            {"scheduleId": "s2", "planId": "p2", "enabled": False, "weekdays": [5]},
+        ]
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={
+                "topic": "read_all_schedule",
+                "state": 0,
+                "data": {"scheduleList": schedules_data},
+            }
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        result = await client.list_schedules()
+        assert len(result) == 2
+        from yarbo.models import YarboSchedule
+        assert isinstance(result[0], YarboSchedule)
+        assert result[0].schedule_id == "s1"
+        assert result[1].enabled is False
+
+    async def test_set_schedule(self, mock_transport):
+        from yarbo.models import YarboSchedule
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "save_schedule", "state": 0, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        sched = YarboSchedule(
+            schedule_id="s1",
+            plan_id="p1",
+            enabled=True,
+            weekdays=[1, 5],
+            start_time="08:00",
+        )
+        result = await client.set_schedule(sched)
+        assert result.success is True
+        cmds = [c[0][0] for c in mock_transport.publish.call_args_list]
+        assert "save_schedule" in cmds
+
+    async def test_delete_schedule(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "del_schedule", "state": 0, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.delete_schedule("sched-id-1")
+        assert result.success is True
+        published = mock_transport.publish.call_args_list
+        payload = next(c[0][1] for c in published if c[0][0] == "del_schedule")
+        assert payload["scheduleId"] == "sched-id-1"

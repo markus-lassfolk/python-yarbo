@@ -597,6 +597,18 @@ class YarboSchedule:
             raw=d,
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to the MQTT ``save_schedule`` payload format."""
+        return {
+            "scheduleId": self.schedule_id,
+            "planId": self.plan_id,
+            "enabled": self.enabled,
+            "scheduleType": self.schedule_type,
+            "weekdays": self.weekdays,
+            "startTime": self.start_time,
+            "timezone": self.timezone,
+        }
+
 
 # ---------------------------------------------------------------------------
 # Command result
