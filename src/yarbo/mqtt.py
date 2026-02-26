@@ -350,8 +350,8 @@ class MqttTransport:
                 str(payload)[:160],
             )
             if self._loop and self._message_queues:
-                envelope: dict[str, Any] = {"topic": msg.topic, "payload": payload}
                 for q in list(self._message_queues):
+                    envelope: dict[str, Any] = {"topic": msg.topic, "payload": payload}
                     self._loop.call_soon_threadsafe(q.put_nowait, envelope)
         except Exception as exc:  # noqa: BLE001
             logger.error("Error handling MQTT message on %s: %s", getattr(msg, "topic", "?"), exc)

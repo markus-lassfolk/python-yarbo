@@ -487,7 +487,7 @@ class YarboCommandResult:
     def from_dict(cls, d: dict[str, Any]) -> YarboCommandResult:
         return cls(
             topic=d.get("topic", ""),
-            state=int(d.get("state", 0)),
+            state=int(d.get("state") or 0),
             data=d.get("data", {}),
             raw=d,
         )
