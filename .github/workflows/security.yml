@@ -29,10 +29,10 @@ jobs:
           cache: pip
 
       - name: Install package and dev dependencies
-        run: pip install -e ".[dev]"
+        run: pip install ".[dev]"
 
       - name: Run pip-audit
-        run: pip-audit --skip-editable
+        run: pip-audit --skip-pkg python-yarbo --strict
 
   bandit:
     name: bandit (static analysis)
