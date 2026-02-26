@@ -205,17 +205,27 @@ class YarboTelemetry:
     Observed values:
     - 69666  (0x11022) — ambient standby lighting
     - 350207 (0x557FF) — all channels at 255
+
+    .. note:: The live protocol delivers this as a string (e.g. ``"69666"``);
+        ``from_dict`` coerces it to ``int`` automatically.
     """
 
     raw: dict[str, Any] = field(default_factory=dict)
     """Complete raw DeviceMSG dict."""
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> YarboTelemetry:
+    def from_dict(cls, d: dict[str, Any], topic: str | None = None) -> YarboTelemetry:
         """
         Parse a DeviceMSG dict into a YarboTelemetry instance.
 
         Handles both the live nested DeviceMSG format and legacy flat payloads.
+
+        Args:
+            d:     Decoded DeviceMSG payload dict.
+            topic: Optional full MQTT topic string (e.g.
+                   ``"snowbot/24400102L8HO5227/device/DeviceMSG"``).
+                   Used to extract the robot serial number when the payload's
+                   ``sn`` field is absent (which is common in live captures).
         """
         # Nested DeviceMSG sub-messages (live protocol format)
         battery_msg: dict[str, Any] = d.get("BatteryMSG", {}) or {}
@@ -251,8 +261,20 @@ class YarboTelemetry:
             rtk_msg.get("heading") if rtk_msg else d.get("heading", d.get("yaw"))
         )
 
+        # Derive SN: payload field first, then extract from MQTT topic.
+        # Topic format: snowbot/{SN}/device/{feedback}
+        sn: str = d.get("sn", "") or ""
+        if not sn and topic:
+            parts = topic.split("/")
+            if len(parts) >= 2:
+                sn = parts[1]
+
+        # Coerce led: live protocol delivers it as a string (e.g. "69666")
+        raw_led = d.get("led")
+        led: int | None = int(raw_led) if raw_led is not None else None
+
         return cls(
-            sn=d.get("sn", ""),
+            sn=sn,
             battery=battery,
             state=state,
             working_state=working_state,
@@ -263,7 +285,7 @@ class YarboTelemetry:
             phi=phi,
             heading=heading,
             speed=d.get("speed"),
-            led=d.get("led"),
+            led=led,
             raw=d,
         )
 
@@ -311,8 +333,12 @@ class TelemetryEnvelope:
         return self.kind == "heart_beat"
 
     def to_telemetry(self) -> YarboTelemetry:
-        """Parse the payload as a :class:`YarboTelemetry` instance."""
-        return YarboTelemetry.from_dict(self.payload)
+        """Parse the payload as a :class:`YarboTelemetry` instance.
+
+        Passes ``self.topic`` so that the SN can be derived from the MQTT
+        topic when the payload's ``sn`` field is absent.
+        """
+        return YarboTelemetry.from_dict(self.payload, topic=self.topic)
 
 
 # ---------------------------------------------------------------------------
@@ -487,7 +513,7 @@ class YarboCommandResult:
     def from_dict(cls, d: dict[str, Any]) -> YarboCommandResult:
         return cls(
             topic=d.get("topic", ""),
-            state=int(d.get("state", 0)),
+            state=int(d.get("state") or 0),
             data=d.get("data", {}),
             raw=d,
         )
