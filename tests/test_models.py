@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from yarbo.models import (
+    HeadType,
     TelemetryEnvelope,
     YarboCommandResult,
     YarboLightState,
@@ -139,6 +140,42 @@ class TestYarboTelemetry:
     def test_raw_preserved(self, sample_telemetry_dict):
         t = YarboTelemetry.from_dict(sample_telemetry_dict)
         assert t.raw is sample_telemetry_dict
+
+    def test_head_type_from_head_msg(self):
+        """HeadMsg.head_type is parsed into head_type field."""
+        d = {"HeadMsg": {"head_type": 1}}
+        t = YarboTelemetry.from_dict(d)
+        assert t.head_type == 1
+        assert t.head_name == "Mower"
+
+    def test_head_type_none_when_missing(self):
+        t = YarboTelemetry.from_dict({"sn": "X1"})
+        assert t.head_type is None
+        assert t.head_name == "Unknown"
+
+    def test_head_name_all_enum_values(self):
+        for ht in HeadType:
+            t = YarboTelemetry.from_dict({"HeadMsg": {"head_type": int(ht)}})
+            assert t.head_name == ht.name
+
+    def test_head_name_unknown_value(self):
+        t = YarboTelemetry.from_dict({"HeadMsg": {"head_type": 99}})
+        assert t.head_name == "Unknown(99)"
+
+
+class TestHeadType:
+    def test_enum_values(self):
+        assert HeadType.Snow == 0
+        assert HeadType.Mower == 1
+        assert HeadType.MowerPro == 2
+        assert HeadType.Leaf == 3
+        assert HeadType.SAM == 4
+        assert HeadType.Trimmer == 5
+        assert HeadType.NoHead == 6
+
+    def test_from_int(self):
+        assert HeadType(0) is HeadType.Snow
+        assert HeadType(6) is HeadType.NoHead
 
 
 class TestTelemetryEnvelope:
