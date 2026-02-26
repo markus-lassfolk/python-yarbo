@@ -68,6 +68,19 @@ class TestYarboLocalClientConnect:
         client = YarboLocalClient(broker="192.168.1.24", sn="24400102L8HO5227")
         assert client.serial_number == "24400102L8HO5227"
 
+    async def test_controller_acquired_default_false(self, mock_transport):
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        assert client.controller_acquired is False
+
+    async def test_controller_acquired_after_handshake(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "get_controller", "state": 0, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123", auto_controller=False)
+        await client.connect()
+        await client.get_controller()
+        assert client.controller_acquired is True
+
 
 @pytest.mark.asyncio
 class TestYarboLocalClientLights:
