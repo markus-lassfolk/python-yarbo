@@ -42,7 +42,6 @@ from .const import (
     DEFAULT_CMD_TIMEOUT,
     LOCAL_BROKER_DEFAULT,
     LOCAL_PORT,
-    TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
     TOPIC_LEAF_DEVICE_MSG,
     TOPIC_LEAF_PLAN_FEEDBACK,
@@ -326,13 +325,15 @@ class YarboLocalClient:
         Returns:
             :class:`~yarbo.models.YarboTelemetry` or ``None`` on timeout.
         """
-        msg = await self._transport.wait_for_message(
+        envelope = await self._transport.wait_for_message(
             timeout=timeout,
             feedback_leaf=TOPIC_LEAF_DEVICE_MSG,
+            _return_envelope=True,
         )
-        if msg:
-            topic = TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=TOPIC_LEAF_DEVICE_MSG)
-            return YarboTelemetry.from_dict(msg, topic=topic)
+        if envelope:
+            topic = envelope.get("topic", "")
+            payload = envelope.get("payload", {})
+            return YarboTelemetry.from_dict(payload, topic=topic)
         return None
 
     async def watch_telemetry(self) -> AsyncIterator[YarboTelemetry]:

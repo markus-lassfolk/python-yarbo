@@ -412,6 +412,35 @@ class TestOnMessage:
         msg = _fake_msg("snowbot/SN1/device/DeviceMSG", {"x": 1})
         transport._on_message(None, None, msg)  # no queues → no-op
 
+    async def test_envelope_dict_isolation(self):
+        """Each queue receives an independent envelope dict.
+
+        Mutating one does not affect the other.
+        """
+        transport = MqttTransport(broker="localhost", sn="SN1")
+        transport._loop = asyncio.get_running_loop()
+
+        q1: asyncio.Queue = asyncio.Queue()
+        q2: asyncio.Queue = asyncio.Queue()
+        transport._message_queues = [q1, q2]
+
+        payload = {"BatteryMSG": {"capacity": 80}}
+        msg = _fake_msg("snowbot/SN1/device/DeviceMSG", payload)
+        transport._on_message(None, None, msg)
+
+        await asyncio.sleep(0.01)  # let call_soon_threadsafe fire
+
+        env1 = q1.get_nowait()
+        env2 = q2.get_nowait()
+
+        # Envelopes must be distinct objects (dict isolation).
+        assert env1 is not env2
+        assert env1["payload"] is not env2["payload"]
+
+        # Mutating one envelope's payload must not affect the other.
+        env1["payload"]["BatteryMSG"]["capacity"] = 999
+        assert env2["payload"]["BatteryMSG"]["capacity"] == 80
+
 
 class TestCodecHeartbeat:
     """Test codec plain-JSON fallback for heart_beat messages."""

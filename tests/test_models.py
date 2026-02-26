@@ -384,6 +384,12 @@ class TestYarboCommandResult:
         assert result.state == 0
         assert result.success is True
 
+    def test_none_state_defaults_to_zero(self):
+        """state=None in the dict must not raise TypeError and should default to 0."""
+        result = YarboCommandResult.from_dict({"topic": "test", "state": None, "data": {}})
+        assert result.state == 0
+        assert result.success is True
+
 
 class TestParseGNGGA:
     """Tests for _parse_gngga NMEA sentence parser (Issue #18)."""
