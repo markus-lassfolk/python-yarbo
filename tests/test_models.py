@@ -162,6 +162,37 @@ class TestYarboTelemetry:
         t = YarboTelemetry.from_dict({"HeadMsg": {"head_type": 99}})
         assert t.head_name == "Unknown(99)"
 
+    def test_activity_state_fields_from_state_msg(self):
+        """on_going_planning, on_going_recharging, planning_paused, machine_controller parsed."""
+        d = {
+            "StateMSG": {
+                "working_state": 1,
+                "charging_status": 0,
+                "error_code": 0,
+                "on_going_planning": True,
+                "on_going_recharging": False,
+                "planning_paused": False,
+                "machine_controller": 2,
+            }
+        }
+        t = YarboTelemetry.from_dict(d)
+        assert t.on_going_planning is True
+        assert t.on_going_recharging is False
+        assert t.planning_paused is False
+        assert t.machine_controller == 2
+
+    def test_activity_state_none_when_missing(self):
+        t = YarboTelemetry.from_dict({"sn": "X1"})
+        assert t.on_going_planning is None
+        assert t.on_going_recharging is None
+        assert t.planning_paused is None
+        assert t.machine_controller is None
+
+    def test_machine_controller_in_fixture(self, sample_telemetry_dict):
+        """machine_controller=1 in the live fixture is parsed correctly."""
+        t = YarboTelemetry.from_dict(sample_telemetry_dict)
+        assert t.machine_controller == 1
+
 
 class TestHeadType:
     def test_enum_values(self):
