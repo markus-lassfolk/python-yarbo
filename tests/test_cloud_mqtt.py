@@ -60,7 +60,9 @@ class TestYarboCloudMqttClientDefaults:
         assert kwargs["username"] == "envuser"
         assert kwargs["password"] == "envpass"
 
-    async def test_missing_credentials_raises(self, mock_transport_cloud):
+    async def test_missing_credentials_raises(self, mock_transport_cloud, monkeypatch):
+        monkeypatch.delenv("YARBO_CLOUD_USERNAME", raising=False)
+        monkeypatch.delenv("YARBO_CLOUD_PASSWORD", raising=False)
         with pytest.raises(ValueError, match="Cloud MQTT credentials required"):
             YarboCloudMqttClient(sn="TESTSN")
 
