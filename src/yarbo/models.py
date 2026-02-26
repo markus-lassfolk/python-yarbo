@@ -168,6 +168,84 @@ class YarboRobot:
 
 
 # ---------------------------------------------------------------------------
+# NMEA GNGGA parsing helper
+# ---------------------------------------------------------------------------
+
+
+def _parse_gngga(
+    sentence: str,
+) -> tuple[float | None, float | None, float | None, int]:
+    """Parse a GNGGA NMEA 0183 sentence into GPS coordinates.
+
+    Format::
+
+        $GNGGA,time,lat,N/S,lon,E/W,quality,sats,hdop,alt,M,...*checksum
+
+    Args:
+        sentence: Raw GNGGA sentence string (with or without checksum).
+
+    Returns:
+        Tuple of ``(latitude, longitude, altitude, fix_quality)`` where
+        latitude and longitude are in decimal degrees (positive = N/E) and
+        altitude is in metres above MSL.  Latitude/longitude/altitude are
+        ``None`` when fix quality is 0 (invalid) or fields are absent.
+        ``fix_quality`` is always an int (0 = invalid).
+    """
+    if not sentence.startswith(("$GNGGA", "$GPGGA")):
+        return None, None, None, 0
+    # Strip NMEA checksum (*XX) if present
+    if "*" in sentence:
+        sentence = sentence[: sentence.index("*")]
+    parts = sentence.split(",")
+    if len(parts) < 10:
+        return None, None, None, 0
+
+    try:
+        fix_quality = int(parts[6]) if parts[6] else 0
+    except ValueError:
+        fix_quality = 0
+
+    if fix_quality == 0:
+        return None, None, None, 0
+
+    # Latitude: DDMM.MMMM → decimal degrees
+    lat: float | None = None
+    if parts[2] and parts[3]:
+        try:
+            raw_lat = parts[2]
+            lat_deg = float(raw_lat[:2])
+            lat_min = float(raw_lat[2:])
+            lat = lat_deg + lat_min / 60.0
+            if parts[3].upper() == "S":
+                lat = -lat
+        except (ValueError, IndexError):
+            lat = None
+
+    # Longitude: DDDMM.MMMM → decimal degrees
+    lon: float | None = None
+    if parts[4] and parts[5]:
+        try:
+            raw_lon = parts[4]
+            lon_deg = float(raw_lon[:3])
+            lon_min = float(raw_lon[3:])
+            lon = lon_deg + lon_min / 60.0
+            if parts[5].upper() == "W":
+                lon = -lon
+        except (ValueError, IndexError):
+            lon = None
+
+    # Altitude in metres (field 9)
+    alt: float | None = None
+    if len(parts) > 9 and parts[9]:
+        try:
+            alt = float(parts[9])
+        except ValueError:
+            alt = None
+
+    return lat, lon, alt, fix_quality
+
+
+# ---------------------------------------------------------------------------
 # Telemetry
 # ---------------------------------------------------------------------------
 
@@ -268,6 +346,19 @@ class YarboTelemetry:
 
     duration: float | None = None
     """Elapsed plan duration in seconds. From ``plan_feedback``."""
+
+    # GPS fields (parsed from rtk_base_data.rover.gngga NMEA sentence)
+    latitude: float | None = None
+    """GPS latitude in decimal degrees (WGS84, positive=N). Source: ``rtk_base_data.rover.gngga``."""
+
+    longitude: float | None = None
+    """GPS longitude in decimal degrees (WGS84, positive=E). Source: ``rtk_base_data.rover.gngga``."""
+
+    altitude: float | None = None
+    """GPS altitude in metres above mean sea level. Source: ``rtk_base_data.rover.gngga``."""
+
+    fix_quality: int = 0
+    """GNSS fix quality from GNGGA field 6. 0=invalid, 1=GPS fix, 2=DGPS, 4=RTK fixed, 5=RTK float."""
 
     raw: dict[str, Any] = field(default_factory=dict)
     """Complete raw DeviceMSG dict."""
@@ -387,6 +478,14 @@ class YarboTelemetry:
             _optional_bool(state_msg.get("planning_paused")) if state_msg else None
         )
 
+        # GPS: parse GNGGA NMEA sentence from rtk_base_data.rover.gngga
+        rtk_base_data: dict[str, Any] = d.get("rtk_base_data", {}) or {}
+        rover: dict[str, Any] = rtk_base_data.get("rover", {}) or {}
+        gngga_sentence: str = rover.get("gngga", "") or ""
+        gps_lat, gps_lon, gps_alt, gps_fix = (
+            _parse_gngga(gngga_sentence) if gngga_sentence else (None, None, None, 0)
+        )
+
         return cls(
             sn=sn,
             battery=battery,
@@ -405,6 +504,10 @@ class YarboTelemetry:
             on_going_recharging=on_going_recharging,
             planning_paused=planning_paused,
             machine_controller=state_msg.get("machine_controller") if state_msg else None,
+            latitude=gps_lat,
+            longitude=gps_lon,
+            altitude=gps_alt,
+            fix_quality=gps_fix,
             raw=d,
         )
 
