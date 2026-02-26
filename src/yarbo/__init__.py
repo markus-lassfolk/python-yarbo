@@ -79,7 +79,7 @@ from .models import (
     YarboTelemetry,
 )
 
-__all__ = [  # noqa: RUF022 — grouped by category for discoverability
+__all__ = [  # noqa: RUF022 — grouped by category, alphabetical within each
     # Version
     "__version__",
     # Codec helpers
@@ -92,7 +92,7 @@ __all__ = [  # noqa: RUF022 — grouped by category for discoverability
     "discover_yarbo",
     # Topic helper
     "Topic",
-    # Models
+    # Models (alphabetical)
     "HeadType",
     "TelemetryEnvelope",
     "YarboCommandResult",
@@ -102,12 +102,12 @@ __all__ = [  # noqa: RUF022 — grouped by category for discoverability
     "YarboRobot",
     "YarboSchedule",
     "YarboTelemetry",
-    # Clients
+    # Clients (alphabetical)
     "YarboClient",
     "YarboCloudClient",
     "YarboCloudMqttClient",
     "YarboLocalClient",
-    # Exceptions
+    # Exceptions (alphabetical)
     "YarboAuthError",
     "YarboCommandError",
     "YarboConnectionError",

@@ -45,7 +45,7 @@ def init_error_reporting(
             environment=environment,
             traces_sample_rate=0.1,
             send_default_pii=False,
-            before_send=_scrub_event,
+            before_send=_scrub_event,  # type: ignore[arg-type, unused-ignore]
         )
         logger.debug("Error reporting initialized (dsn=%s...)", dsn[:30])
     except ImportError:
