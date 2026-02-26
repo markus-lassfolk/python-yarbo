@@ -244,6 +244,18 @@ class YarboTelemetry:
     head_type: int | None = None
     """Attachment head type integer. See :class:`HeadType` enum. Source: ``HeadMsg.head_type``."""
 
+    on_going_planning: bool | None = None
+    """True while a work plan is actively executing. Source: ``StateMSG.on_going_planning``."""
+
+    on_going_recharging: bool | None = None
+    """True while the robot is returning to or docking at the base. Source: ``StateMSG.on_going_recharging``."""
+
+    planning_paused: bool | None = None
+    """True when the active plan has been paused. Source: ``StateMSG.planning_paused``."""
+
+    machine_controller: int | None = None
+    """Active controller identifier. Source: ``StateMSG.machine_controller``."""
+
     raw: dict[str, Any] = field(default_factory=dict)
     """Complete raw DeviceMSG dict."""
 
@@ -331,6 +343,20 @@ class YarboTelemetry:
             except (ValueError, TypeError):
                 led = None
 
+        # Activity state fields from StateMSG
+        def _optional_bool(v: object) -> bool | None:
+            return bool(v) if v is not None else None
+
+        on_going_planning: bool | None = (
+            _optional_bool(state_msg.get("on_going_planning")) if state_msg else None
+        )
+        on_going_recharging: bool | None = (
+            _optional_bool(state_msg.get("on_going_recharging")) if state_msg else None
+        )
+        planning_paused: bool | None = (
+            _optional_bool(state_msg.get("planning_paused")) if state_msg else None
+        )
+
         return cls(
             sn=sn,
             battery=battery,
@@ -345,6 +371,10 @@ class YarboTelemetry:
             speed=d.get("speed"),
             led=led,
             head_type=head_msg.get("head_type") if head_msg else None,
+            on_going_planning=on_going_planning,
+            on_going_recharging=on_going_recharging,
+            planning_paused=planning_paused,
+            machine_controller=state_msg.get("machine_controller") if state_msg else None,
             raw=d,
         )
 
