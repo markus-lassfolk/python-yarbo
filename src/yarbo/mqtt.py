@@ -23,6 +23,7 @@ References:
 from __future__ import annotations
 
 import asyncio
+import copy
 import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -466,9 +467,12 @@ class MqttTransport:
                 self._last_heartbeat = time.time()
             if self._loop and self._message_queues:
                 for q in list(self._message_queues):
-                    # Each consumer gets its own copy so that no two consumers
+                    # Each consumer gets its own deep copy so that no two consumers
                     # can accidentally mutate each other's view of the envelope.
-                    envelope: dict[str, Any] = {"topic": msg.topic, "payload": payload.copy()}
+                    envelope: dict[str, Any] = {
+                        "topic": msg.topic,
+                        "payload": copy.deepcopy(payload),
+                    }
                     # _enqueue_safe runs on the event loop: drops the oldest item
                     # when the bounded queue is full so slow consumers never stall
                     # real-time telemetry delivery.
