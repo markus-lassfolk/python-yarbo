@@ -1,9 +1,9 @@
 """GlitchTip/Sentry error reporting for python-yarbo."""
+
 import logging
+import os
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_DSN = "http://c690590f8f664d609f6abe4cb0392d53@192.168.1.99:8000/2"
 
 
 def init_error_reporting(
@@ -13,31 +13,26 @@ def init_error_reporting(
 ) -> None:
     """Initialize Sentry/GlitchTip error reporting.
 
-    Enabled by default (opt-out). To disable, set YARBO_SENTRY_DSN="" or pass enabled=False.
+    Opt-in only. To enable, set YARBO_SENTRY_DSN or SENTRY_DSN environment variable,
+    or pass dsn= parameter explicitly.
 
     Args:
-        dsn: Sentry DSN. Defaults to the python-yarbo GlitchTip project.
-             Set YARBO_SENTRY_DSN="" to explicitly disable.
+        dsn: Sentry DSN. Must be provided via parameter or environment variable.
+             No default DSN is provided.
         environment: Environment tag (production/development/testing).
         enabled: Master switch. If False, no SDK initialization occurs.
     """
     if not enabled:
         return
 
-    import os
-
-    # Check for explicit disable via empty env var
-    env_dsn = os.environ.get("YARBO_SENTRY_DSN")
-    if env_dsn is not None and env_dsn == "":
-        return  # Explicitly disabled
-
-    dsn = dsn or env_dsn or os.environ.get("SENTRY_DSN") or _DEFAULT_DSN
+    # Load DSN from parameter or environment only
+    dsn = dsn or os.environ.get("YARBO_SENTRY_DSN") or os.environ.get("SENTRY_DSN")
 
     if not dsn:
         return
 
     try:
-        import sentry_sdk
+        import sentry_sdk  # noqa: PLC0415
 
         sentry_sdk.init(
             dsn=dsn,
@@ -49,7 +44,7 @@ def init_error_reporting(
         logger.debug("Error reporting initialized (dsn=%s...)", dsn[:30])
     except ImportError:
         logger.debug("sentry-sdk not installed; error reporting disabled")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to initialize error reporting: %s", exc)
 
 

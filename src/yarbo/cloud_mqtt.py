@@ -16,14 +16,11 @@ References:
 
 from __future__ import annotations
 
+import os
+
 from .const import CLOUD_BROKER, CLOUD_PORT_TLS
 from .local import YarboLocalClient
 from .mqtt import MqttTransport
-
-#: Default Tencent TDMQ username for Yarbo cloud access.
-CLOUD_MQTT_DEFAULT_USERNAME = "hytech"
-#: Default Tencent TDMQ password for Yarbo cloud access.
-CLOUD_MQTT_DEFAULT_PASSWORD = "REDACTED_CREDENTIAL"
 
 
 class YarboCloudMqttClient(YarboLocalClient):
@@ -36,15 +33,19 @@ class YarboCloudMqttClient(YarboLocalClient):
 
     Example (async context manager)::
 
-        async with YarboCloudMqttClient(sn="24400102L8HO5227") as client:
+        async with YarboCloudMqttClient(
+            sn="24400102L8HO5227",
+            username=os.environ["YARBO_CLOUD_USERNAME"],
+            password=os.environ["YARBO_CLOUD_PASSWORD"]
+        ) as client:
             await client.lights_on()
             async for telemetry in client.watch_telemetry():
                 print(f"Battery: {telemetry.battery}%")
 
     Args:
         sn:             Robot serial number.
-        username:       Tencent TDMQ username (default: ``"hytech"``).
-        password:       Tencent TDMQ password.
+        username:       Tencent TDMQ username (required; load from environment).
+        password:       Tencent TDMQ password (required; load from environment).
         broker:         MQTT broker hostname (default: Tencent TDMQ endpoint).
         port:           Broker TLS port (default: 8883).
         auto_controller: Send ``get_controller`` automatically (default True).
@@ -57,13 +58,25 @@ class YarboCloudMqttClient(YarboLocalClient):
     def __init__(
         self,
         sn: str,
-        username: str = CLOUD_MQTT_DEFAULT_USERNAME,
-        password: str = CLOUD_MQTT_DEFAULT_PASSWORD,
+        username: str | None = None,
+        password: str | None = None,
         broker: str = CLOUD_BROKER,
         port: int = CLOUD_PORT_TLS,
         auto_controller: bool = True,
         tls_ca_certs: str | None = None,
     ) -> None:
+        # Load credentials from environment if not provided
+        if username is None:
+            username = os.environ.get("YARBO_CLOUD_USERNAME", "")
+        if password is None:
+            password = os.environ.get("YARBO_CLOUD_PASSWORD", "")
+
+        if not username or not password:
+            raise ValueError(
+                "Cloud MQTT credentials required. Set YARBO_CLOUD_USERNAME and "
+                "YARBO_CLOUD_PASSWORD environment variables or pass username= "
+                "and password= parameters."
+            )
         # Initialise parent fields directly (bypass super().__init__'s
         # transport construction so we can inject our TLS-enabled transport).
         self._broker = broker
