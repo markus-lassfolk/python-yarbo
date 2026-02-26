@@ -176,31 +176,76 @@ async with YarboClient(...) as client:
 
 ### `YarboTelemetry`
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `sn` | `str` | Robot serial number |
-| `battery` | `int \| None` | State of charge (0–100 %) |
-| `state` | `str \| None` | Operating state (`"idle"`, `"working"`, etc.) |
-| `error_code` | `str \| None` | Active fault code |
-| `position_x` | `float \| None` | X coordinate (metres) |
-| `position_y` | `float \| None` | Y coordinate (metres) |
-| `heading` | `float \| None` | Heading (degrees, 0–360) |
-| `speed` | `float \| None` | Current speed (m/s) |
+Parsed from `DeviceMSG` nested schema (`BatteryMSG`, `StateMSG`, `RTKMSG`, `CombinedOdom`).
+
+| Field | Type | Source | Description |
+|-------|------|--------|-------------|
+| `battery` | `int \| None` | `BatteryMSG.capacity` | State of charge (0–100 %) |
+| `state` | `str \| None` | derived | `"idle"` or `"active"` |
+| `working_state` | `int \| None` | `StateMSG.working_state` | Raw state (0=idle, 1=active) |
+| `charging_status` | `int \| None` | `StateMSG.charging_status` | 2 = charging/docked |
+| `error_code` | `int \| str \| None` | `StateMSG.error_code` | Active fault code |
+| `heading` | `float \| None` | `RTKMSG.heading` | Compass heading (degrees) |
+| `position_x` | `float \| None` | `CombinedOdom.x` | Odometry X (metres) |
+| `position_y` | `float \| None` | `CombinedOdom.y` | Odometry Y (metres) |
+| `phi` | `float \| None` | `CombinedOdom.phi` | Odometry heading (radians) |
+| `speed` | `float \| None` | flat | Current speed (m/s) |
+| `raw` | `dict` | — | Complete raw DeviceMSG dict |
+
+## Cloud vs Local
+
+| Feature | Local MQTT | Cloud REST |
+|---------|-----------|------------|
+| Robot control (lights, buzzer, …) | ✅ Yes | ❌ No |
+| Live telemetry | ✅ Yes | ❌ No |
+| List bound robots | ❌ No | ✅ Yes |
+| Account management | ❌ No | ✅ Yes |
+| Robot rename / bind / unbind | ❌ No | ✅ Yes |
+| Notifications | ❌ No | ✅ Yes |
+| Works offline | ✅ Yes | ❌ No |
+| Requires cloud account | ❌ No | ✅ Yes |
+
+> **⚠️ Cloud MQTT not implemented.** The Yarbo backend also provides a Tencent
+> TDMQ MQTT broker (`mqtt-b8rkj5da-usw-public.mqtt.tencenttdmq.com:8883`) for
+> remote control without LAN access. This library does **not** implement cloud
+> MQTT — there is no remote-control fallback. All robot commands go via the
+> local broker only.
+
+## Security Notes
+
+> ⚠️ **The Yarbo local MQTT broker accepts anonymous connections without
+> authentication.** Anyone on your WiFi network can connect and send commands
+> to your robot.
+
+Recommendations:
+- Keep the robot on a dedicated IoT VLAN and firewall it from the internet.
+- Do **not** port-forward port 1883 to the internet.
+- Consider a firewall rule that allows only your home automation host to reach
+  port 1883 on the robot's IP.
 
 ## Protocol Notes
 
 This library was built from reverse-engineering the Yarbo Flutter app and
 live packet captures. Key protocol facts:
 
-- **MQTT broker**: Local EMQX at `192.168.1.24:1883` (or your robot's IP)
+- **MQTT broker**: Local EMQX at `192.168.1.24:1883` or `192.168.1.55:1883`
+  (check which IP your robot uses — both have been observed in production)
 - **Payload encoding**: `zlib.compress(json.dumps(payload).encode())`
+  (exception: `heart_beat` topic uses plain uncompressed JSON)
 - **Controller handshake**: `get_controller` must be sent before action commands
-- **Topics**: `snowbot/{SN}/app/{cmd}` (publish) and `snowbot/{SN}/device/{feedback}` (subscribe)
+- **Topics**: `snowbot/{SN}/app/{cmd}` (publish) and
+  `snowbot/{SN}/device/{feedback}` (subscribe)
+- **Telemetry topic**: `DeviceMSG` (~1–2 Hz) with nested schema:
+  `BatteryMSG.capacity`, `StateMSG.working_state`, `RTKMSG.heading`,
+  `CombinedOdom.x/y/phi`
+- **Not yet implemented**: Local REST API (port 8088) and TCP JSON (port 22220)
+  are documented in `yarbo-reversing` but not implemented here
 
 See [`yarbo-reversing`](https://github.com/markus-lassfolk/yarbo-reversing) for:
 - Full [command catalogue](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/COMMAND_CATALOGUE.md)
 - [Light control protocol](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/LIGHT_CTRL_PROTOCOL.md)
 - [API endpoints](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/API_ENDPOINTS.md)
+- [MQTT protocol reference](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/MQTT_PROTOCOL.md)
 
 ## Related Projects
 

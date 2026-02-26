@@ -49,8 +49,10 @@ __version__ = "0.1.0"
 __author__ = "Markus Lassfolk"
 __license__ = "MIT"
 
+from ._codec import decode, encode
 from .client import YarboClient
 from .cloud import YarboCloudClient
+from .const import Topic
 from .discovery import DiscoveredRobot, discover_yarbo
 from .exceptions import (
     YarboAuthError,
@@ -64,42 +66,44 @@ from .exceptions import (
 )
 from .local import YarboLocalClient
 from .models import (
+    TelemetryEnvelope,
     YarboCommandResult,
     YarboLightState,
     YarboPlan,
+    YarboPlanParams,
     YarboRobot,
     YarboSchedule,
     YarboTelemetry,
 )
-from ._codec import decode, encode
 
 __all__ = [
-    # Core clients
-    "YarboClient",
-    "YarboLocalClient",
-    "YarboCloudClient",
     # Discovery
-    "discover_yarbo",
     "DiscoveredRobot",
-    # Models
-    "YarboRobot",
-    "YarboTelemetry",
-    "YarboLightState",
-    "YarboPlan",
-    "YarboSchedule",
-    "YarboCommandResult",
-    # Exceptions
-    "YarboError",
-    "YarboConnectionError",
-    "YarboTimeoutError",
-    "YarboProtocolError",
+    "TelemetryEnvelope",
+    # Helpers
+    "Topic",
+    # Core clients
     "YarboAuthError",
-    "YarboTokenExpiredError",
+    "YarboClient",
+    "YarboCloudClient",
     "YarboCommandError",
+    "YarboCommandResult",
+    "YarboConnectionError",
+    "YarboError",
+    "YarboLightState",
+    "YarboLocalClient",
     "YarboNotControllerError",
-    # Codec
-    "encode",
-    "decode",
-    # Metadata
+    "YarboPlan",
+    "YarboPlanParams",
+    "YarboProtocolError",
+    "YarboRobot",
+    "YarboSchedule",
+    "YarboTelemetry",
+    "YarboTimeoutError",
+    "YarboTokenExpiredError",
     "__version__",
+    # Codec
+    "decode",
+    "discover_yarbo",
+    "encode",
 ]
