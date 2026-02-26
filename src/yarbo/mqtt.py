@@ -11,10 +11,13 @@ Protocol notes (from live captures and Blutter ASM analysis):
 - A ``get_controller`` handshake MUST be sent before action commands.
 - Commands are fire-and-forget; responses arrive on ``data_feedback``.
 - All payloads are encoded with :func:`yarbo._codec.encode`.
+- ``heart_beat`` is plain JSON (NOT zlib); the codec fallback handles this.
+- ``DeviceMSG`` is the primary telemetry topic (~1-2 Hz, zlib JSON).
 
 References:
   yarbo-reversing/scripts/local_ctrl.py — working reference implementation
   yarbo-reversing/docs/COMMAND_CATALOGUE.md — full command catalogue
+  yarbo-reversing/docs/MQTT_PROTOCOL.md — protocol reference
 """
 
 from __future__ import annotations
@@ -22,8 +25,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+
+    import paho.mqtt.client as _paho
+
+import contextlib
 
 from ._codec import decode, encode
 from .const import (
@@ -34,9 +43,10 @@ from .const import (
     TOPIC_APP_TMPL,
     TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
+    Topic,
 )
 from .exceptions import YarboConnectionError, YarboTimeoutError
-from .models import YarboTelemetry
+from .models import TelemetryEnvelope
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +55,16 @@ class MqttTransport:
     """
     Asyncio-compatible MQTT transport for the Yarbo local broker.
 
-    Uses paho-mqtt in its callback-based API, bridged to asyncio via
-    ``loop.call_soon_threadsafe``. All public methods are coroutines.
+    Uses paho-mqtt v2 (``CallbackAPIVersion.VERSION2``) in its callback-based
+    API, bridged to asyncio via ``loop.call_soon_threadsafe``. All public
+    methods are coroutines.
+
+    Message routing
+    ~~~~~~~~~~~~~~~
+    All received messages are pushed into the shared ``_message_queues`` list
+    as envelope dicts: ``{"topic": full_topic, "payload": decoded_dict}``.
+    :meth:`wait_for_message` filters by topic leaf; :meth:`telemetry_stream`
+    yields all messages as :class:`~yarbo.models.TelemetryEnvelope` objects.
 
     Example::
 
@@ -54,8 +72,10 @@ class MqttTransport:
         await transport.connect()
         await transport.publish("get_controller", {})
         await transport.publish("light_ctrl", {"led_head": 255, "led_left_w": 255})
-        async for telemetry in transport.telemetry_stream():
-            print(telemetry.battery)
+        async for envelope in transport.telemetry_stream():
+            if envelope.is_telemetry:
+                t = envelope.to_telemetry()
+                print(t.battery)
         await transport.disconnect()
     """
 
@@ -67,6 +87,7 @@ class MqttTransport:
         username: str = "",
         password: str = "",
         connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
+        qos: int = 0,
     ) -> None:
         self._broker = broker
         self._sn = sn
@@ -74,10 +95,13 @@ class MqttTransport:
         self._username = username
         self._password = password
         self._connect_timeout = connect_timeout
+        self._qos = qos
 
-        self._client: Any = None  # paho.mqtt.client.Client
+        # paho Client — typed via TYPE_CHECKING import to avoid hard dependency
+        self._client: _paho.Client | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._connected = asyncio.Event()
+        # Each entry is a queue of envelope dicts: {"topic": str, "payload": dict}
         self._message_queues: list[asyncio.Queue[dict[str, Any]]] = []
 
     @property
@@ -103,7 +127,7 @@ class MqttTransport:
             YarboTimeoutError:    If the broker does not respond within timeout.
         """
         try:
-            import paho.mqtt.client as mqtt
+            import paho.mqtt.client as mqtt  # noqa: PLC0415
         except ImportError as exc:
             raise YarboConnectionError(
                 "paho-mqtt is required: pip install 'python-yarbo[mqtt]'"
@@ -116,7 +140,7 @@ class MqttTransport:
         self._client = mqtt.Client(
             client_id=client_id,
             protocol=mqtt.MQTTv311,
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # type: ignore[attr-defined]
         )
         if self._username:
             self._client.username_pw_set(self._username, self._password)
@@ -136,7 +160,7 @@ class MqttTransport:
 
         try:
             await asyncio.wait_for(self._connected.wait(), timeout=self._connect_timeout)
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             self._client.loop_stop()
             raise YarboTimeoutError(
                 f"Timed out waiting for MQTT connection to {self._broker}:{self._port}"
@@ -145,10 +169,15 @@ class MqttTransport:
         logger.info("MQTT connected to %s:%d (sn=%s)", self._broker, self._port, self._sn)
 
     async def disconnect(self) -> None:
-        """Cleanly disconnect from the MQTT broker."""
+        """
+        Cleanly disconnect from the MQTT broker.
+
+        Calls ``disconnect()`` first to send a clean MQTT DISCONNECT packet,
+        then ``loop_stop()`` to let paho flush pending I/O.
+        """
         if self._client:
-            self._client.loop_stop()
             self._client.disconnect()
+            self._client.loop_stop()
             self._connected.clear()
             logger.info("MQTT disconnected from %s", self._broker)
 
@@ -156,22 +185,25 @@ class MqttTransport:
     # Publish
     # ------------------------------------------------------------------
 
-    async def publish(self, cmd: str, payload: dict[str, Any]) -> None:
+    async def publish(self, cmd: str, payload: dict[str, Any], qos: int | None = None) -> None:
         """
         Publish a zlib-compressed command to the robot.
 
         Args:
             cmd:     Topic leaf name (e.g. ``"light_ctrl"``, ``"get_controller"``).
             payload: Dict to encode and publish.
+            qos:     QoS level (0, 1, or 2). Defaults to the transport's
+                     configured QoS (typically 0 for Yarbo).
 
         Raises:
             YarboConnectionError: If not connected.
         """
         if not self.is_connected:
             raise YarboConnectionError("Not connected to MQTT broker. Call connect() first.")
+        effective_qos = qos if qos is not None else self._qos
         topic = TOPIC_APP_TMPL.format(sn=self._sn, cmd=cmd)
         encoded = encode(payload)
-        self._client.publish(topic, encoded, qos=0)
+        self._client.publish(topic, encoded, qos=effective_qos)  # type: ignore[union-attr]
         logger.debug("→ MQTT [%s] %s", topic, str(payload)[:160])
 
     # ------------------------------------------------------------------
@@ -184,89 +216,142 @@ class MqttTransport:
         feedback_leaf: str = TOPIC_LEAF_DATA_FEEDBACK,
     ) -> dict[str, Any] | None:
         """
-        Wait for the next message on a feedback topic.
+        Wait for the next message matching a specific feedback topic leaf.
 
-        Creates a temporary queue that receives the next message matching
-        the given feedback topic leaf.
+        Creates a temporary queue that receives all incoming messages and
+        filters them by ``feedback_leaf`` (matched against the topic suffix).
 
         Args:
             timeout:       Maximum wait time in seconds.
-            feedback_leaf: Feedback topic leaf (default: ``data_feedback``).
+            feedback_leaf: Feedback topic leaf to match (default: ``data_feedback``).
+                           Use ``TOPIC_LEAF_DEVICE_MSG`` for telemetry data.
 
         Returns:
-            Decoded message dict, or ``None`` on timeout.
+            Decoded message payload dict, or ``None`` on timeout.
         """
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._message_queues.append(queue)
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
         try:
-            return await asyncio.wait_for(queue.get(), timeout=timeout)
-        except asyncio.TimeoutError:
-            return None
+            while True:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    return None
+                try:
+                    envelope = await asyncio.wait_for(queue.get(), timeout=remaining)
+                except TimeoutError:
+                    return None
+                if Topic.leaf(envelope.get("topic", "")) == feedback_leaf:
+                    return cast("dict[str, Any]", envelope["payload"])
         finally:
-            self._message_queues.discard(queue) if hasattr(  # type: ignore[attr-defined]
-                self._message_queues, "discard"
-            ) else self._message_queues.remove(queue)
+            with contextlib.suppress(ValueError):
+                self._message_queues.remove(queue)
 
-    async def telemetry_stream(self) -> AsyncIterator[YarboTelemetry]:
+    async def telemetry_stream(self) -> AsyncIterator[TelemetryEnvelope]:
         """
-        Async generator that yields :class:`~yarbo.models.YarboTelemetry` objects.
+        Async generator that yields :class:`~yarbo.models.TelemetryEnvelope` objects.
+
+        Streams ALL incoming MQTT messages (``DeviceMSG``, ``heart_beat``,
+        ``data_feedback``, etc.) as typed envelopes. Callers can inspect
+        ``envelope.kind`` to route messages.
 
         Runs indefinitely until the transport is disconnected or the caller
-        breaks the loop. The stream delivers messages from ``data_feedback``
-        at approximately the robot's telemetry rate (~1 Hz).
+        breaks the loop.
 
         Example::
 
-            async for telemetry in transport.telemetry_stream():
-                print(f"Battery: {telemetry.battery}%")
-                if telemetry.battery and telemetry.battery < 20:
+            async for envelope in transport.telemetry_stream():
+                if envelope.is_telemetry:         # DeviceMSG
+                    t = envelope.to_telemetry()
+                    print(f"Battery: {t.battery}%")
+                elif envelope.is_heartbeat:        # heart_beat
+                    print("Working:", envelope.payload.get("working_state"))
+                if some_condition:
                     break
 
         Yields:
-            :class:`~yarbo.models.YarboTelemetry` parsed from each message.
+            :class:`~yarbo.models.TelemetryEnvelope` for each received message.
         """
         queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
         self._message_queues.append(queue)
         try:
             while self.is_connected:
                 try:
-                    msg = await asyncio.wait_for(queue.get(), timeout=5.0)
-                    yield YarboTelemetry.from_dict(msg)
-                except asyncio.TimeoutError:
+                    envelope_dict = await asyncio.wait_for(queue.get(), timeout=5.0)
+                    topic: str = envelope_dict.get("topic", "")
+                    payload: dict[str, Any] = envelope_dict.get("payload", {})
+                    kind = Topic.leaf(topic)
+                    yield TelemetryEnvelope(kind=kind, payload=payload, topic=topic)
+                except TimeoutError:
                     continue
         finally:
-            try:
+            with contextlib.suppress(ValueError):
                 self._message_queues.remove(queue)
-            except ValueError:
-                pass
 
     # ------------------------------------------------------------------
     # paho-mqtt callbacks (called from paho thread → bridge to asyncio)
     # ------------------------------------------------------------------
 
-    def _on_connect(self, client: Any, userdata: Any, flags: Any, rc: int, props: Any) -> None:
+    def _on_connect(
+        self,
+        client: Any,
+        userdata: Any,
+        flags: Any,
+        reason_code: Any,
+        props: Any,
+    ) -> None:
+        """
+        paho-mqtt v2 on_connect callback.
+
+        ``reason_code`` is a ``ReasonCode`` object under paho v2.
+        ``getattr(..., "value", ...)`` normalises it to an ``int``
+        so the ``rc == 0`` check works for both object and int forms.
+        """
+        rc = getattr(reason_code, "value", reason_code)
         if rc == 0:
             # Subscribe to all feedback topics
             for leaf in ALL_FEEDBACK_LEAVES:
                 topic = TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=leaf)
-                client.subscribe(topic, qos=0)
+                client.subscribe(topic, qos=self._qos)
                 logger.debug("Subscribed: %s", topic)
             if self._loop:
                 self._loop.call_soon_threadsafe(self._connected.set)
         else:
-            logger.error("MQTT connect failed rc=%d", rc)
+            logger.error("MQTT connect failed rc=%s", rc)
 
-    def _on_disconnect(self, client: Any, userdata: Any, disconnect_flags: Any, rc: int, props: Any) -> None:
+    def _on_disconnect(
+        self,
+        client: Any,
+        userdata: Any,
+        disconnect_flags: Any,
+        reason_code: Any,
+        props: Any,
+    ) -> None:
+        """paho-mqtt v2 on_disconnect callback."""
+        rc = getattr(reason_code, "value", reason_code)
         if self._loop:
             self._loop.call_soon_threadsafe(self._connected.clear)
-        logger.warning("MQTT disconnected rc=%d", rc)
+        logger.warning("MQTT disconnected rc=%s", rc)
 
     def _on_message(self, client: Any, userdata: Any, msg: Any) -> None:
+        """
+        paho-mqtt on_message callback.
+
+        Pushes an envelope dict ``{"topic": str, "payload": dict}`` into
+        every registered queue so that :meth:`wait_for_message` can filter
+        by topic leaf and :meth:`telemetry_stream` can expose the kind.
+        """
         try:
             payload = decode(msg.payload)
-            logger.debug("← MQTT [%s] %s", msg.topic, str(payload)[:160])
+            logger.debug(
+                "← MQTT [%s] %s",
+                msg.topic,
+                str(payload)[:160],
+            )
             if self._loop and self._message_queues:
+                envelope: dict[str, Any] = {"topic": msg.topic, "payload": payload}
                 for q in list(self._message_queues):
-                    self._loop.call_soon_threadsafe(q.put_nowait, payload)
+                    self._loop.call_soon_threadsafe(q.put_nowait, envelope)
         except Exception as exc:  # noqa: BLE001
-            logger.error("Error handling MQTT message: %s", exc)
+            logger.error("Error handling MQTT message on %s: %s", getattr(msg, "topic", "?"), exc)

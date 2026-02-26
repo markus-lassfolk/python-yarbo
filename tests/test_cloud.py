@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from yarbo.cloud import YarboCloudClient
-from yarbo.exceptions import YarboAuthError, YarboCommandError
+from yarbo.exceptions import YarboAuthError
 from yarbo.models import YarboRobot
 
 
 @pytest.fixture
 def mock_auth():
     """Patch YarboAuth so cloud tests don't require real credentials."""
-    with patch("yarbo.cloud.YarboAuth") as MockAuth:
+    with patch("yarbo.cloud.YarboAuth") as MockAuth:  # noqa: N806
         instance = MagicMock()
         instance.login = AsyncMock()
         instance.logout = AsyncMock()
@@ -99,7 +99,6 @@ class TestYarboCloudClientNotifications:
 class TestYarboCloudClientErrors:
     async def test_403_raises_auth_error(self, mock_auth):
         client = YarboCloudClient(username="u", password="p")
-        import aiohttp
 
         mock_resp = MagicMock()
         mock_resp.status = 403
