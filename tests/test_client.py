@@ -52,6 +52,23 @@ class TestYarboClientLifecycle:
         mock_local_client.connect.assert_called_once()
         mock_local_client.disconnect.assert_called_once()
 
+    async def test_serial_number(self, mock_local_client):
+        mock_local_client.serial_number = "24400102L8HO5227"
+        client = YarboClient(broker="192.168.1.24", sn="24400102L8HO5227")
+        assert client.serial_number == "24400102L8HO5227"
+
+    async def test_controller_acquired_false_by_default(self, mock_local_client):
+        """controller_acquired delegates to the local client and is False before handshake."""
+        mock_local_client.controller_acquired = False
+        client = YarboClient(broker="192.168.1.24", sn="TEST")
+        assert client.controller_acquired is False
+
+    async def test_controller_acquired_true_after_handshake(self, mock_local_client):
+        """controller_acquired reflects the local client's state after get_controller."""
+        mock_local_client.controller_acquired = True
+        client = YarboClient(broker="192.168.1.24", sn="TEST")
+        assert client.controller_acquired is True
+
 
 @pytest.mark.asyncio
 class TestYarboClientDelegation:

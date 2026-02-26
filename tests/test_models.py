@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from yarbo.models import (
+    HeadType,
     TelemetryEnvelope,
     YarboCommandResult,
     YarboLightState,
@@ -12,6 +13,7 @@ from yarbo.models import (
     YarboRobot,
     YarboSchedule,
     YarboTelemetry,
+    _parse_gngga,
 )
 
 
@@ -140,6 +142,126 @@ class TestYarboTelemetry:
         t = YarboTelemetry.from_dict(sample_telemetry_dict)
         assert t.raw is sample_telemetry_dict
 
+    def test_head_type_from_head_msg(self):
+        """HeadMsg.head_type is parsed into head_type field."""
+        d = {"HeadMsg": {"head_type": 1}}
+        t = YarboTelemetry.from_dict(d)
+        assert t.head_type == 1
+        assert t.head_name == "Mower"
+
+    def test_head_type_none_when_missing(self):
+        t = YarboTelemetry.from_dict({"sn": "X1"})
+        assert t.head_type is None
+        assert t.head_name == "Unknown"
+
+    def test_head_name_all_enum_values(self):
+        for ht in HeadType:
+            t = YarboTelemetry.from_dict({"HeadMsg": {"head_type": int(ht)}})
+            assert t.head_name == ht.name
+
+    def test_head_name_unknown_value(self):
+        t = YarboTelemetry.from_dict({"HeadMsg": {"head_type": 99}})
+        assert t.head_name == "Unknown(99)"
+
+    def test_activity_state_fields_from_state_msg(self):
+        """on_going_planning, on_going_recharging, planning_paused, machine_controller parsed."""
+        d = {
+            "StateMSG": {
+                "working_state": 1,
+                "charging_status": 0,
+                "error_code": 0,
+                "on_going_planning": True,
+                "on_going_recharging": False,
+                "planning_paused": False,
+                "machine_controller": 2,
+            }
+        }
+        t = YarboTelemetry.from_dict(d)
+        assert t.on_going_planning is True
+        assert t.on_going_recharging is False
+        assert t.planning_paused is False
+        assert t.machine_controller == 2
+
+    def test_activity_state_none_when_missing(self):
+        t = YarboTelemetry.from_dict({"sn": "X1"})
+        assert t.on_going_planning is None
+        assert t.on_going_recharging is None
+        assert t.planning_paused is None
+        assert t.machine_controller is None
+
+    def test_machine_controller_in_fixture(self, sample_telemetry_dict):
+        """machine_controller=1 in the live fixture is parsed correctly."""
+        t = YarboTelemetry.from_dict(sample_telemetry_dict)
+        assert t.machine_controller == 1
+
+
+class TestYarboTelemetryAliases:
+    """Tests for battery_capacity and serial_number aliases (Issue #16)."""
+
+    def test_battery_capacity_alias(self, sample_telemetry_dict):
+        t = YarboTelemetry.from_dict(sample_telemetry_dict)
+        assert t.battery_capacity == t.battery
+        assert t.battery_capacity == 83
+
+    def test_battery_capacity_none(self):
+        t = YarboTelemetry.from_dict({})
+        assert t.battery_capacity is None
+
+    def test_serial_number_alias(self):
+        t = YarboTelemetry.from_dict({}, topic="snowbot/24400102L8HO5227/device/DeviceMSG")
+        assert t.serial_number == "24400102L8HO5227"
+        assert t.serial_number == t.sn
+
+    def test_serial_number_from_payload(self):
+        t = YarboTelemetry.from_dict({"sn": "MYSN"})
+        assert t.serial_number == "MYSN"
+
+
+class TestYarboTelemetryPlanFeedback:
+    def test_from_plan_feedback_basic(self):
+        d = {
+            "planId": "plan-abc",
+            "state": "running",
+            "areaCovered": 120.5,
+            "duration": 300.0,
+        }
+        t = YarboTelemetry.from_plan_feedback(d)
+        assert t.plan_id == "plan-abc"
+        assert t.plan_state == "running"
+        assert t.area_covered == pytest.approx(120.5)
+        assert t.duration == pytest.approx(300.0)
+        # Non-plan fields default to None
+        assert t.battery is None
+        assert t.sn == ""
+
+    def test_from_plan_feedback_missing_fields(self):
+        t = YarboTelemetry.from_plan_feedback({})
+        assert t.plan_id is None
+        assert t.plan_state is None
+        assert t.area_covered is None
+        assert t.duration is None
+
+    def test_plan_fields_none_in_device_msg(self):
+        """DeviceMSG by itself has no plan tracking fields."""
+        t = YarboTelemetry.from_dict({"BatteryMSG": {"capacity": 80}})
+        assert t.plan_id is None
+        assert t.plan_state is None
+
+
+class TestHeadType:
+    def test_enum_values(self):
+        assert HeadType.Snow == 0
+        assert HeadType.Mower == 1
+        assert HeadType.MowerPro == 2
+        assert HeadType.Leaf == 3
+        assert HeadType.SAM == 4
+        assert HeadType.Trimmer == 5
+        assert HeadType.NoHead == 6
+
+    def test_from_int(self):
+        assert HeadType(0) is HeadType.Snow
+        assert HeadType(6) is HeadType.NoHead
+
 
 class TestTelemetryEnvelope:
     def test_is_telemetry(self):
@@ -261,3 +383,86 @@ class TestYarboCommandResult:
         assert result.topic == ""
         assert result.state == 0
         assert result.success is True
+
+    def test_none_state_defaults_to_zero(self):
+        """state=None in the dict must not raise TypeError and should default to 0."""
+        result = YarboCommandResult.from_dict({"topic": "test", "state": None, "data": {}})
+        assert result.state == 0
+        assert result.success is True
+
+
+class TestParseGNGGA:
+    """Tests for _parse_gngga NMEA sentence parser (Issue #18)."""
+
+    # Real GNGGA samples
+    SAMPLE_NORTH_EAST = "$GNGGA,123519,4807.038,N,01131.324,E,1,08,0.9,545.4,M,46.9,M,,*42"
+    SAMPLE_SOUTH_WEST = "$GNGGA,194530,3352.905,S,07047.610,W,4,12,0.6,32.1,M,-17.0,M,,*52"
+    SAMPLE_RTK_FIXED = "$GNGGA,095821,5321.574,N,00617.812,W,4,14,0.5,12.3,M,50.1,M,,*7A"
+    SAMPLE_NO_FIX = "$GNGGA,000000,,,,,0,00,99.9,0.0,M,0.0,M,,*48"
+    SAMPLE_NOT_GNGGA = "$GPGSV,3,1,12,..."
+
+    def test_north_east_coordinates(self):
+        lat, lon, alt, fix = _parse_gngga(self.SAMPLE_NORTH_EAST)
+        assert lat is not None
+        assert lon is not None
+        assert lat == pytest.approx(48.0 + 7.038 / 60, rel=1e-5)
+        assert lon == pytest.approx(11.0 + 31.324 / 60, rel=1e-5)
+        assert alt == pytest.approx(545.4, rel=1e-5)
+        assert fix == 1
+
+    def test_south_west_coordinates(self):
+        lat, lon, _alt, fix = _parse_gngga(self.SAMPLE_SOUTH_WEST)
+        assert lat is not None and lat < 0  # South
+        assert lon is not None and lon < 0  # West
+        assert fix == 4  # RTK fixed
+
+    def test_rtk_fixed_fix_quality(self):
+        lat, lon, _alt, fix = _parse_gngga(self.SAMPLE_RTK_FIXED)
+        assert fix == 4
+        assert lat is not None
+        assert lon is not None
+
+    def test_no_fix_returns_none(self):
+        lat, lon, _alt, fix = _parse_gngga(self.SAMPLE_NO_FIX)
+        assert fix == 0
+        assert lat is None
+        assert lon is None
+
+    def test_non_gngga_sentence(self):
+        lat, lon, _alt, fix = _parse_gngga(self.SAMPLE_NOT_GNGGA)
+        assert lat is None
+        assert lon is None
+        assert fix == 0
+
+    def test_empty_string(self):
+        lat, _lon, _alt, fix = _parse_gngga("")
+        assert lat is None
+        assert fix == 0
+
+
+class TestYarboTelemetryGPS:
+    """Tests for GPS fields in YarboTelemetry parsed from DeviceMSG (Issue #18)."""
+
+    GNGGA = "$GNGGA,123519,4807.038,N,01131.324,E,1,08,0.9,545.4,M,46.9,M,,*42"
+
+    def test_gps_fields_parsed_from_device_msg(self):
+        d = {"rtk_base_data": {"rover": {"gngga": self.GNGGA}}}
+        t = YarboTelemetry.from_dict(d)
+        assert t.latitude is not None
+        assert t.longitude is not None
+        assert t.altitude == pytest.approx(545.4, rel=1e-5)
+        assert t.fix_quality == 1
+
+    def test_gps_none_when_no_rtk_data(self):
+        t = YarboTelemetry.from_dict({"sn": "X1"})
+        assert t.latitude is None
+        assert t.longitude is None
+        assert t.altitude is None
+        assert t.fix_quality == 0
+
+    def test_gps_none_when_no_fix(self):
+        d = {"rtk_base_data": {"rover": {"gngga": "$GNGGA,000000,,,,,0,00,99.9,0.0,M,0.0,M,,*48"}}}
+        t = YarboTelemetry.from_dict(d)
+        assert t.latitude is None
+        assert t.longitude is None
+        assert t.fix_quality == 0

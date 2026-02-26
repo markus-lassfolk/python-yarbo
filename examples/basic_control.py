@@ -42,9 +42,7 @@ async def main(broker: str, sn: str, lights_off: bool) -> None:
             await asyncio.sleep(2)
 
             print("💡 Body lights only (red)...")
-            await client.set_lights(
-                YarboLightState(body_left_r=255, body_right_r=255)
-            )
+            await client.set_lights(YarboLightState(body_left_r=255, body_right_r=255))
             await asyncio.sleep(2)
 
             print("💡 Lights OFF...")
