@@ -213,6 +213,17 @@ class MqttTransport:
     # Receive
     # ------------------------------------------------------------------
 
+    def release_queue(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
+        """
+        Remove a pre-registered wait queue from the message queue list.
+
+        Call this if a publish fails after :meth:`create_wait_queue` but before
+        :meth:`wait_for_message` — otherwise the queue leaks and accumulates
+        copies of every future incoming message indefinitely.
+        """
+        with contextlib.suppress(ValueError):
+            self._message_queues.remove(queue)
+
     def create_wait_queue(self) -> asyncio.Queue[dict[str, Any]]:
         """
         Pre-register a bounded message queue **before** publishing a command.
@@ -265,11 +276,9 @@ class MqttTransport:
         """
         if _queue is not None:
             queue = _queue
-            owns_queue = False
         else:
             queue = asyncio.Queue(maxsize=1000)
             self._message_queues.append(queue)
-            owns_queue = True
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         try:
@@ -288,12 +297,8 @@ class MqttTransport:
                     continue
                 return cast("dict[str, Any]", envelope["payload"])
         finally:
-            if owns_queue:
-                with contextlib.suppress(ValueError):
-                    self._message_queues.remove(queue)
-            else:
-                with contextlib.suppress(ValueError):
-                    self._message_queues.remove(queue)
+            with contextlib.suppress(ValueError):
+                self._message_queues.remove(queue)
 
     async def telemetry_stream(self) -> AsyncIterator[TelemetryEnvelope]:
         """

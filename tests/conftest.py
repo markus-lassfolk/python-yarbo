@@ -73,7 +73,7 @@ def sample_telemetry_dict() -> dict[str, Any]:
             "y": -0.338,
             "phi": -0.359,
         },
-        "led": 69666,
+        "led": "69666",
         "timestamp": 1771943280.0,
     }
 
@@ -85,7 +85,7 @@ def sample_telemetry_dict_flat() -> dict[str, Any]:
         "sn": "24400102L8HO5227",
         "state": "idle",
         "battery": 85,
-        "led": 69666,
+        "led": "69666",
         "posX": 12.34,
         "posY": -5.67,
         "heading": 270.0,

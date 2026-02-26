@@ -41,6 +41,7 @@ from .const import (
     DEFAULT_CMD_TIMEOUT,
     LOCAL_BROKER_DEFAULT,
     LOCAL_PORT,
+    TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
     TOPIC_LEAF_DEVICE_MSG,
 )
@@ -142,7 +143,7 @@ class YarboLocalClient:
     # Controller handshake
     # ------------------------------------------------------------------
 
-    async def get_controller(self) -> YarboCommandResult | None:
+    async def get_controller(self) -> YarboCommandResult:
         """
         Acquire controller role for this session.
 
@@ -163,7 +164,13 @@ class YarboLocalClient:
         # Pre-register the reply queue BEFORE publishing to eliminate the
         # publish/subscribe race (response could arrive before we start waiting).
         wait_queue = self._transport.create_wait_queue()
-        await self._transport.publish("get_controller", {})
+        try:
+            await self._transport.publish("get_controller", {})
+        except Exception:
+            # publish() failed — wait_for_message's finally block never runs, so
+            # we must release the pre-registered queue here to prevent a leak.
+            self._transport.release_queue(wait_queue)
+            raise
         msg = await self._transport.wait_for_message(
             timeout=DEFAULT_CMD_TIMEOUT,
             feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
@@ -182,9 +189,7 @@ class YarboLocalClient:
             return result
         # Timeout — firmware that doesn't send data_feedback for get_controller.
         # Do NOT mark as acquired; raise so the caller can decide whether to retry.
-        raise YarboTimeoutError(
-            "Timed out waiting for get_controller acknowledgement from robot."
-        )
+        raise YarboTimeoutError("Timed out waiting for get_controller acknowledgement from robot.")
 
     async def _ensure_controller(self) -> None:
         """Send ``get_controller`` if not already acquired and auto mode is on."""
@@ -279,7 +284,8 @@ class YarboLocalClient:
             feedback_leaf=TOPIC_LEAF_DEVICE_MSG,
         )
         if msg:
-            return YarboTelemetry.from_dict(msg)
+            topic = TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=TOPIC_LEAF_DEVICE_MSG)
+            return YarboTelemetry.from_dict(msg, topic=topic)
         return None
 
     async def watch_telemetry(self) -> AsyncIterator[YarboTelemetry]:
