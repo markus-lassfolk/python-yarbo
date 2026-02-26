@@ -40,7 +40,13 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from types import TracebackType
 
-    from .models import YarboCommandResult, YarboLightState, YarboPlan, YarboSchedule, YarboTelemetry
+    from .models import (
+        YarboCommandResult,
+        YarboLightState,
+        YarboPlan,
+        YarboSchedule,
+        YarboTelemetry,
+    )
 
 logger = logging.getLogger(__name__)
 

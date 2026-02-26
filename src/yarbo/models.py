@@ -13,8 +13,8 @@ References:
 
 from __future__ import annotations
 
-import enum
 from dataclasses import dataclass, field
+import enum
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -172,7 +172,7 @@ class YarboRobot:
 # ---------------------------------------------------------------------------
 
 
-def _parse_gngga(
+def _parse_gngga(  # noqa: PLR0912
     sentence: str,
 ) -> tuple[float | None, float | None, float | None, int]:
     """Parse a GNGGA NMEA 0183 sentence into GPS coordinates.
@@ -326,7 +326,7 @@ class YarboTelemetry:
     """True while a work plan is actively executing. Source: ``StateMSG.on_going_planning``."""
 
     on_going_recharging: bool | None = None
-    """True while the robot is returning to or docking at the base. Source: ``StateMSG.on_going_recharging``."""
+    """True while returning to or docking at the base. Source: ``StateMSG.on_going_recharging``."""
 
     planning_paused: bool | None = None
     """True when the active plan has been paused. Source: ``StateMSG.planning_paused``."""
@@ -349,16 +349,16 @@ class YarboTelemetry:
 
     # GPS fields (parsed from rtk_base_data.rover.gngga NMEA sentence)
     latitude: float | None = None
-    """GPS latitude in decimal degrees (WGS84, positive=N). Source: ``rtk_base_data.rover.gngga``."""
+    """GPS latitude in decimal degrees (WGS84, positive=N). Source: ``gngga``."""
 
     longitude: float | None = None
-    """GPS longitude in decimal degrees (WGS84, positive=E). Source: ``rtk_base_data.rover.gngga``."""
+    """GPS longitude in decimal degrees (WGS84, positive=E). Source: ``gngga``."""
 
     altitude: float | None = None
-    """GPS altitude in metres above mean sea level. Source: ``rtk_base_data.rover.gngga``."""
+    """GPS altitude in metres above MSL. Source: ``rtk_base_data.rover.gngga``."""
 
     fix_quality: int = 0
-    """GNSS fix quality from GNGGA field 6. 0=invalid, 1=GPS fix, 2=DGPS, 4=RTK fixed, 5=RTK float."""
+    """GNSS fix quality (GNGGA field 6). 0=invalid, 1=GPS, 2=DGPS, 4=RTK fixed, 5=RTK float."""
 
     raw: dict[str, Any] = field(default_factory=dict)
     """Complete raw DeviceMSG dict."""

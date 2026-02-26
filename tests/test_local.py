@@ -10,7 +10,7 @@ import pytest
 
 from yarbo.exceptions import YarboNotControllerError, YarboTimeoutError
 from yarbo.local import YarboLocalClient
-from yarbo.models import TelemetryEnvelope, YarboLightState
+from yarbo.models import TelemetryEnvelope, YarboLightState, YarboPlan, YarboSchedule
 
 
 def _encode(payload: dict) -> bytes:
@@ -213,9 +213,7 @@ class TestYarboLocalClientTelemetry:
 
     async def test_watch_telemetry_merges_plan_feedback(self):
         """plan_feedback data is merged into the next DeviceMSG telemetry."""
-        from unittest.mock import patch as _patch
-
-        with _patch("yarbo.local.MqttTransport") as MockT:  # noqa: N806
+        with patch("yarbo.local.MqttTransport") as MockT:  # noqa: N806
             instance = MagicMock()
             instance.connect = AsyncMock()
             instance.is_connected = True
@@ -224,7 +222,12 @@ class TestYarboLocalClientTelemetry:
             async def fake_stream():
                 yield TelemetryEnvelope(
                     kind="plan_feedback",
-                    payload={"planId": "p-123", "state": "running", "areaCovered": 55.0, "duration": 120.0},
+                    payload={
+                        "planId": "p-123",
+                        "state": "running",
+                        "areaCovered": 55.0,
+                        "duration": 120.0,
+                    },
                     topic="snowbot/TEST/device/plan_feedback",
                 )
                 yield TelemetryEnvelope(
@@ -354,13 +357,11 @@ class TestYarboLocalClientScheduleManagement:
         await client.connect()
         result = await client.list_schedules()
         assert len(result) == 2
-        from yarbo.models import YarboSchedule
         assert isinstance(result[0], YarboSchedule)
         assert result[0].schedule_id == "s1"
         assert result[1].enabled is False
 
     async def test_set_schedule(self, mock_transport):
-        from yarbo.models import YarboSchedule
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "save_schedule", "state": 0, "data": {}}
         )
@@ -420,7 +421,6 @@ class TestYarboLocalClientPlanCRUD:
         await client.connect()
         result = await client.list_plans()
         assert len(result) == 2
-        from yarbo.models import YarboPlan
         assert isinstance(result[0], YarboPlan)
         assert result[0].plan_id == "p1"
         assert result[1].plan_name == "Back Yard"

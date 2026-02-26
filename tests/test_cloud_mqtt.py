@@ -49,36 +49,36 @@ def mock_transport_cloud():
 @pytest.mark.asyncio
 class TestYarboCloudMqttClientDefaults:
     async def test_default_broker_and_port(self, mock_transport_cloud):
-        _, MockT = mock_transport_cloud
+        _, mock_t = mock_transport_cloud
         YarboCloudMqttClient(sn="TESTSN")
-        kwargs = MockT.call_args[1]
+        kwargs = mock_t.call_args[1]
         assert kwargs["broker"] == CLOUD_BROKER
         assert kwargs["port"] == CLOUD_PORT_TLS
 
     async def test_default_credentials(self, mock_transport_cloud):
-        _, MockT = mock_transport_cloud
+        _, mock_t = mock_transport_cloud
         YarboCloudMqttClient(sn="TESTSN")
-        kwargs = MockT.call_args[1]
+        kwargs = mock_t.call_args[1]
         assert kwargs["username"] == CLOUD_MQTT_DEFAULT_USERNAME
         assert kwargs["password"] == CLOUD_MQTT_DEFAULT_PASSWORD
 
     async def test_tls_enabled(self, mock_transport_cloud):
-        _, MockT = mock_transport_cloud
+        _, mock_t = mock_transport_cloud
         YarboCloudMqttClient(sn="TESTSN")
-        kwargs = MockT.call_args[1]
+        kwargs = mock_t.call_args[1]
         assert kwargs["tls"] is True
 
     async def test_custom_credentials(self, mock_transport_cloud):
-        _, MockT = mock_transport_cloud
+        _, mock_t = mock_transport_cloud
         YarboCloudMqttClient(sn="TESTSN", username="myuser", password="mypass")
-        kwargs = MockT.call_args[1]
+        kwargs = mock_t.call_args[1]
         assert kwargs["username"] == "myuser"
         assert kwargs["password"] == "mypass"
 
     async def test_custom_ca_certs(self, mock_transport_cloud):
-        _, MockT = mock_transport_cloud
+        _, mock_t = mock_transport_cloud
         YarboCloudMqttClient(sn="TESTSN", tls_ca_certs="/path/to/ca.pem")
-        kwargs = MockT.call_args[1]
+        kwargs = mock_t.call_args[1]
         assert kwargs["tls_ca_certs"] == "/path/to/ca.pem"
 
 
@@ -116,7 +116,7 @@ class TestYarboCloudMqttClientAPI:
         assert client.serial_number == "24400102L8HO5227"
 
     async def test_watch_telemetry_yields(self, mock_transport_cloud):
-        transport, _ = mock_transport_cloud
+        _transport, _ = mock_transport_cloud
         client = YarboCloudMqttClient(sn="TESTSN")
         await client.connect()
         items = []

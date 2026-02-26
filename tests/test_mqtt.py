@@ -17,7 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 import zlib
 
 import paho.mqtt.client as real_mqtt
@@ -33,6 +33,7 @@ from yarbo.const import (
     TOPIC_LEAF_HEART_BEAT,
     Topic,
 )
+from yarbo.local import YarboLocalClient
 from yarbo.models import TelemetryEnvelope
 from yarbo.mqtt import MqttTransport
 
@@ -499,17 +500,13 @@ class TestMqttReconnect:
 
     async def test_local_client_resets_controller_on_reconnect(self):
         """YarboLocalClient resets _controller_acquired when transport reconnects."""
-        from unittest.mock import AsyncMock, patch as _patch
-
-        with _patch("yarbo.local.MqttTransport") as MockT:  # noqa: N806
+        with patch("yarbo.local.MqttTransport") as MockT:  # noqa: N806
             instance = MagicMock()
             instance.connect = AsyncMock()
             instance.is_connected = True
             callbacks: list = []
             instance.add_reconnect_callback = MagicMock(side_effect=callbacks.append)
             MockT.return_value = instance
-
-            from yarbo.local import YarboLocalClient
 
             client = YarboLocalClient(broker="192.168.1.24", sn="TEST")
             client._controller_acquired = True
