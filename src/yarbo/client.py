@@ -67,12 +67,11 @@ class YarboClient:
       robot management, account operations, scheduling, and notifications
       via the Yarbo HTTPS API. Requires ``username`` / ``password``.
 
-    .. note:: **Cloud MQTT is NOT implemented.**
-        The Yarbo cloud backend also supports a Tencent TDMQ MQTT broker for
-        remote control. This library does **not** implement cloud MQTT — there
-        is no cloud MQTT fallback for control commands. All MQTT commands are
-        local-only. ``TODO: implement cloud MQTT (broker:
-        mqtt-b8rkj5da-usw-public.mqtt.tencenttdmq.com:8883)``.
+    .. note:: **Cloud MQTT is available via** :class:`~yarbo.cloud_mqtt.YarboCloudMqttClient`.
+        The Yarbo cloud backend supports a Tencent TDMQ MQTT broker for remote
+        control. Use :class:`~yarbo.cloud_mqtt.YarboCloudMqttClient` for
+        internet-remote control over TLS — it provides the same API surface as
+        :class:`~yarbo.local.YarboLocalClient`.
 
     For purely local usage (no cloud account) this client is equivalent to
     :class:`~yarbo.local.YarboLocalClient`.
@@ -149,6 +148,11 @@ class YarboClient:
     def serial_number(self) -> str:
         """Robot serial number (read-only)."""
         return self._local.serial_number
+
+    @property
+    def controller_acquired(self) -> bool:
+        """True if the controller handshake has been successfully completed."""
+        return self._local.controller_acquired
 
     # ------------------------------------------------------------------
     # Local commands (delegated to YarboLocalClient)

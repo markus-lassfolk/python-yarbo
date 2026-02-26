@@ -49,13 +49,13 @@ __version__ = "0.1.0"
 __author__ = "Markus Lassfolk"
 __license__ = "MIT"
 
-from .error_reporting import init_error_reporting
 from ._codec import decode, encode
 from .client import YarboClient
 from .cloud import YarboCloudClient
 from .cloud_mqtt import YarboCloudMqttClient
 from .const import Topic
 from .discovery import DiscoveredRobot, discover_yarbo
+from .error_reporting import init_error_reporting
 from .exceptions import (
     YarboAuthError,
     YarboCommandError,
@@ -79,41 +79,43 @@ from .models import (
     YarboTelemetry,
 )
 
-__all__ = [
-    # Error reporting (opt-out — enabled by default, set YARBO_SENTRY_DSN="" to disable)
+__all__ = [  # noqa: RUF022 — grouped by category for discoverability
+    # Version
+    "__version__",
+    # Codec helpers
+    "decode",
+    "encode",
+    # Error reporting
     "init_error_reporting",
     # Discovery
     "DiscoveredRobot",
+    "discover_yarbo",
+    # Topic helper
+    "Topic",
     # Models
     "HeadType",
     "TelemetryEnvelope",
-    # Helpers
-    "Topic",
-    # Core clients
-    "YarboAuthError",
-    "YarboClient",
-    "YarboCloudClient",
-    "YarboCloudMqttClient",
-    "YarboCommandError",
     "YarboCommandResult",
-    "YarboConnectionError",
-    "YarboError",
     "YarboLightState",
-    "YarboLocalClient",
-    "YarboNotControllerError",
     "YarboPlan",
     "YarboPlanParams",
-    "YarboProtocolError",
     "YarboRobot",
     "YarboSchedule",
     "YarboTelemetry",
+    # Clients
+    "YarboClient",
+    "YarboCloudClient",
+    "YarboCloudMqttClient",
+    "YarboLocalClient",
+    # Exceptions
+    "YarboAuthError",
+    "YarboCommandError",
+    "YarboConnectionError",
+    "YarboError",
+    "YarboNotControllerError",
+    "YarboProtocolError",
     "YarboTimeoutError",
     "YarboTokenExpiredError",
-    "__version__",
-    # Codec
-    "decode",
-    "discover_yarbo",
-    "encode",
 ]
 
 # Opt-out error reporting: enabled by default, disable via YARBO_SENTRY_DSN=""
