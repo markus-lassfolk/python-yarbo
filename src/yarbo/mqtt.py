@@ -239,6 +239,7 @@ class MqttTransport:
         feedback_leaf: str = TOPIC_LEAF_DATA_FEEDBACK,
         command_name: str | None = None,
         _queue: asyncio.Queue[dict[str, Any]] | None = None,
+        _return_envelope: bool = False,
     ) -> dict[str, Any] | None:
         """
         Wait for the next message matching a specific feedback topic leaf.
@@ -259,17 +260,18 @@ class MqttTransport:
             _queue:        Pre-registered queue from :meth:`create_wait_queue`.
                            When supplied the queue is NOT created here and will
                            be deregistered on return.
+            _return_envelope: If ``True``, return the full envelope dict instead
+                           of just the payload.
 
         Returns:
-            Decoded message payload dict, or ``None`` on timeout.
+            Decoded message payload dict (or envelope dict if ``_return_envelope``
+            is ``True``), or ``None`` on timeout.
         """
         if _queue is not None:
             queue = _queue
-            owns_queue = False
         else:
             queue = asyncio.Queue(maxsize=1000)
             self._message_queues.append(queue)
-            owns_queue = True
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         try:
@@ -286,14 +288,12 @@ class MqttTransport:
                 payload_topic = envelope.get("payload", {}).get("topic")
                 if command_name is not None and payload_topic != command_name:
                     continue
+                if _return_envelope:
+                    return envelope
                 return cast("dict[str, Any]", envelope["payload"])
         finally:
-            if owns_queue:
-                with contextlib.suppress(ValueError):
-                    self._message_queues.remove(queue)
-            else:
-                with contextlib.suppress(ValueError):
-                    self._message_queues.remove(queue)
+            with contextlib.suppress(ValueError):
+                self._message_queues.remove(queue)
 
     async def telemetry_stream(self) -> AsyncIterator[TelemetryEnvelope]:
         """

@@ -13,6 +13,7 @@ References:
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -271,7 +272,10 @@ class YarboTelemetry:
 
         # Coerce led: live protocol delivers it as a string (e.g. "69666")
         raw_led = d.get("led")
-        led: int | None = int(raw_led) if raw_led is not None else None
+        led: int | None = None
+        if raw_led is not None:
+            with contextlib.suppress(ValueError, TypeError):
+                led = int(raw_led)
 
         return cls(
             sn=sn,
@@ -511,9 +515,14 @@ class YarboCommandResult:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> YarboCommandResult:
+        state_val = d.get("state") or 0
+        try:
+            state = int(state_val)
+        except (ValueError, TypeError):
+            state = 0
         return cls(
             topic=d.get("topic", ""),
-            state=int(d.get("state") or 0),
+            state=state,
             data=d.get("data", {}),
             raw=d,
         )
