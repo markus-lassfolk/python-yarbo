@@ -767,9 +767,18 @@ class YarboCommandResult:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> YarboCommandResult:
+        if "state" in d:
+            state_val = d["state"]
+            try:
+                state = int(state_val)
+            except (ValueError, TypeError):
+                # Unparseable state: treat as failure sentinel; raw value in raw.
+                state = -1
+        else:
+            state = 0
         return cls(
             topic=d.get("topic", ""),
-            state=int(d.get("state") or 0),
+            state=state,
             data=d.get("data", {}),
             raw=d,
         )
