@@ -16,10 +16,18 @@ Protocol notes (from live captures):
           ``snowbot/{SN}/device/{feedback}`` (subscribe).
 - Commands are generally fire-and-forget; responses on ``data_feedback``.
 
+Transport limitations (NOT YET IMPLEMENTED):
+- Local REST API (``192.168.8.8:8088``) — direct HTTP REST on the robot network.
+  Endpoints are unknown; requires further sniffing or SSH exploration.
+- Local TCP JSON (``192.168.8.1:22220``) — a JSON-over-TCP protocol discovered
+  in libapp.so (uses ``com`` field with ``@n`` namespace notation).
+- This module is MQTT-only. Both unimplemented transports are TODO items.
+
 References:
     yarbo-reversing/scripts/local_ctrl.py — working reference implementation
     yarbo-reversing/docs/COMMAND_CATALOGUE.md — full command catalogue
     yarbo-reversing/docs/LIGHT_CTRL_PROTOCOL.md — light control protocol
+    yarbo-reversing/docs/MQTT_PROTOCOL.md — protocol reference
 """
 
 from __future__ import annotations
@@ -27,14 +35,22 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from collections.abc import AsyncIterator
-from types import TracebackType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .const import DEFAULT_CMD_TIMEOUT, LOCAL_BROKER_DEFAULT, LOCAL_PORT
-from .exceptions import YarboConnectionError
+from .const import (
+    DEFAULT_CMD_TIMEOUT,
+    LOCAL_BROKER_DEFAULT,
+    LOCAL_PORT,
+    TOPIC_LEAF_DATA_FEEDBACK,
+    TOPIC_LEAF_DEVICE_MSG,
+)
+from .exceptions import YarboNotControllerError
 from .models import YarboCommandResult, YarboLightState, YarboTelemetry
 from .mqtt import MqttTransport
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from types import TracebackType
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +103,7 @@ class YarboLocalClient:
     # Context manager
     # ------------------------------------------------------------------
 
-    async def __aenter__(self) -> "YarboLocalClient":
+    async def __aenter__(self) -> YarboLocalClient:
         await self.connect()
         return self
 
@@ -133,13 +149,33 @@ class YarboLocalClient:
         MUST be called before any action command (lights, buzzer, motion, etc.).
         Called automatically when ``auto_controller=True`` (the default).
 
-        Returns the first ``data_feedback`` response, or ``None`` on timeout.
+        Validates the ``data_feedback`` response. If the robot rejects the
+        handshake (non-zero ``state``), raises :exc:`~yarbo.exceptions.YarboNotControllerError`.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success, ``None`` on timeout.
+
+        Raises:
+            YarboNotControllerError: If the robot explicitly rejects the handshake.
         """
         await self._transport.publish("get_controller", {})
-        self._controller_acquired = True
-        msg = await self._transport.wait_for_message(timeout=DEFAULT_CMD_TIMEOUT)
+        msg = await self._transport.wait_for_message(
+            timeout=DEFAULT_CMD_TIMEOUT,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+        )
         if msg:
-            return YarboCommandResult.from_dict(msg)
+            result = YarboCommandResult.from_dict(msg)
+            if not result.success:
+                raise YarboNotControllerError(
+                    f"get_controller handshake rejected by robot "
+                    f"(topic={result.topic!r}, state={result.state})",
+                    code=str(result.state),
+                )
+            self._controller_acquired = True
+            return result
+        # Timeout — assume success for backward compatibility with firmware
+        # that doesn't always send data_feedback for get_controller
+        self._controller_acquired = True
         return None
 
     async def _ensure_controller(self) -> None:
@@ -157,7 +193,7 @@ class YarboLocalClient:
         Set all 7 LED channels at once.
 
         Args:
-            state: :class:`~yarbo.models.YarboLightState` with per-channel values (0–255).
+            state: :class:`~yarbo.models.YarboLightState` with per-channel values (0-255).
 
         Example::
 
@@ -224,22 +260,32 @@ class YarboLocalClient:
 
     async def get_status(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> YarboTelemetry | None:
         """
-        Fetch a single telemetry snapshot from ``data_feedback``.
+        Fetch a single telemetry snapshot from ``DeviceMSG`` (full telemetry).
+
+        Waits for the next ``DeviceMSG`` message, which contains the complete
+        nested telemetry payload (battery, state, RTK, odometry, etc.).
 
         Returns:
             :class:`~yarbo.models.YarboTelemetry` or ``None`` on timeout.
         """
-        msg = await self._transport.wait_for_message(timeout=timeout)
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DEVICE_MSG,
+        )
         if msg:
             return YarboTelemetry.from_dict(msg)
         return None
 
     async def watch_telemetry(self) -> AsyncIterator[YarboTelemetry]:
         """
-        Async generator yielding live telemetry from the robot.
+        Async generator yielding live telemetry from ``DeviceMSG`` messages.
 
-        Subscribes to ``data_feedback`` and yields a
-        :class:`~yarbo.models.YarboTelemetry` for every message received.
+        Filters the envelope stream to ``DeviceMSG`` messages only and yields
+        a :class:`~yarbo.models.YarboTelemetry` for each one (~1-2 Hz).
+
+        To access raw envelopes from all topics, use
+        :meth:`~yarbo.mqtt.MqttTransport.telemetry_stream` on the transport
+        directly.
 
         Example::
 
@@ -248,8 +294,9 @@ class YarboLocalClient:
                 if telemetry.battery and telemetry.battery < 10:
                     break
         """
-        async for telemetry in self._transport.telemetry_stream():
-            yield telemetry
+        async for envelope in self._transport.telemetry_stream():
+            if envelope.is_telemetry:
+                yield envelope.to_telemetry()
 
     # ------------------------------------------------------------------
     # Raw publish (escape hatch)
@@ -278,7 +325,7 @@ class YarboLocalClient:
         broker: str = LOCAL_BROKER_DEFAULT,
         sn: str = "",
         port: int = LOCAL_PORT,
-    ) -> "_SyncYarboLocalClient":
+    ) -> _SyncYarboLocalClient:
         """
         Create a synchronous wrapper around ``YarboLocalClient``.
 
