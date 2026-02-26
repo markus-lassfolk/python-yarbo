@@ -114,7 +114,7 @@ async def discover_yarbo(
     results: list[DiscoveredRobot] = []
     probed = await asyncio.gather(*(probe_with_limit(ip) for ip in unique_candidates))
 
-    for ip, result in zip(unique_candidates, probed, strict=False):
+    for ip, result in zip(unique_candidates, probed, strict=True):
         if isinstance(result, DiscoveredRobot):
             results.append(result)
         elif isinstance(result, Exception):
