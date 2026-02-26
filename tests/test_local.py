@@ -210,3 +210,78 @@ class TestYarboLocalClientTelemetry:
             items.append(t)
             break  # only need one
         assert len(items) == 1
+
+
+@pytest.mark.asyncio
+class TestYarboLocalClientPlanManagement:
+    """Tests for typed plan management methods (Issue #12)."""
+
+    def _success_response(self, cmd: str) -> dict:
+        return {"topic": cmd, "state": 0, "data": {}}
+
+    async def test_start_plan_publishes_and_returns_result(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value=self._success_response("start_plan")
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.start_plan("plan-uuid-1")
+        published = mock_transport.publish.call_args_list
+        cmds = [c[0][0] for c in published]
+        assert "start_plan" in cmds
+        payload = next(c[0][1] for c in published if c[0][0] == "start_plan")
+        assert payload["planId"] == "plan-uuid-1"
+        assert result.success is True
+
+    async def test_stop_plan(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value=self._success_response("stop_plan")
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.stop_plan()
+        cmds = [c[0][0] for c in mock_transport.publish.call_args_list]
+        assert "stop_plan" in cmds
+        assert result.success is True
+
+    async def test_pause_plan(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value=self._success_response("pause_plan")
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.pause_plan()
+        assert result.success is True
+
+    async def test_resume_plan(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value=self._success_response("resume_plan")
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.resume_plan()
+        assert result.success is True
+
+    async def test_return_to_dock_uses_cmd_recharge(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value=self._success_response("cmd_recharge")
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.return_to_dock()
+        cmds = [c[0][0] for c in mock_transport.publish.call_args_list]
+        assert "cmd_recharge" in cmds
+        assert result.success is True
+
+    async def test_plan_timeout_raises(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(return_value=None)
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        with pytest.raises(YarboTimeoutError):
+            await client.start_plan("p1")
