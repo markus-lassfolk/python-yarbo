@@ -58,21 +58,22 @@ def _scrub_event(event: dict, hint: dict) -> dict:  # type: ignore[type-arg]
     """Remove sensitive data before sending."""
     # Strip MQTT credentials, tokens, passwords from breadcrumbs and extras
     sensitive_keywords = ("password", "token", "secret", "credential", "key")
-    
+    message_keywords = ("password", "token", "secret", "credential")
+
     if "extra" in event:
         for key in list(event["extra"]):
             if any(s in key.lower() for s in sensitive_keywords):
                 event["extra"][key] = "[REDACTED]"
-    
+
     if "breadcrumbs" in event and "values" in event["breadcrumbs"]:
         for breadcrumb in event["breadcrumbs"]["values"]:
             if "message" in breadcrumb:
                 msg = str(breadcrumb["message"])
-                if any(s in msg.lower() for s in sensitive_keywords):
+                if any(s in msg.lower() for s in message_keywords):
                     breadcrumb["message"] = "[REDACTED]"
             if "data" in breadcrumb and isinstance(breadcrumb["data"], dict):
                 for key in list(breadcrumb["data"]):
                     if any(s in key.lower() for s in sensitive_keywords):
                         breadcrumb["data"][key] = "[REDACTED]"
-    
+
     return event
