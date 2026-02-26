@@ -29,9 +29,9 @@ _SCAN_CONCURRENCY = 50
 
 #: Well-known local broker IPs observed in the wild.
 KNOWN_BROKER_IPS: list[str] = [
-    "192.168.1.24",   # confirmed from live HaLow capture (primary)
-    "192.168.1.55",   # confirmed from live HaLow capture (secondary)
-    "192.168.8.8",    # Yarbo AP mode default gateway
+    "192.168.1.24",  # confirmed from live HaLow capture (primary)
+    "192.168.1.55",  # confirmed from live HaLow capture (secondary)
+    "192.168.8.8",  # Yarbo AP mode default gateway
     "192.168.1.1",
     "192.168.0.1",
 ]

@@ -11,7 +11,7 @@ Reference: Blutter ASM analysis of the Flutter app's MqttPublish class.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 import zlib
 
 
@@ -54,10 +54,10 @@ def decode(data: bytes) -> dict[str, Any]:
         Decoded dict. Returns ``{"_raw": data.hex()}`` on total failure.
     """
     try:
-        return json.loads(zlib.decompress(data))
+        return cast("dict[str, Any]", json.loads(zlib.decompress(data)))
     except zlib.error:
         pass
     try:
-        return json.loads(data)
+        return cast("dict[str, Any]", json.loads(data))
     except (json.JSONDecodeError, UnicodeDecodeError):
         return {"_raw": data[:512].hex()}

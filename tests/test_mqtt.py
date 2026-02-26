@@ -40,6 +40,7 @@ from yarbo.mqtt import MqttTransport
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _encode(payload: dict) -> bytes:
     """Wire-format encode a dict for testing."""
     return zlib.compress(json.dumps(payload, separators=(",", ":")).encode())

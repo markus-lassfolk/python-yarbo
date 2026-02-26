@@ -96,11 +96,9 @@ class YarboClient:
             port=port,
             auto_controller=auto_controller,
         )
-        self._cloud_kwargs = {
-            "username": username,
-            "password": password,
-            "rsa_key_path": rsa_key_path,
-        }
+        self._cloud_username = username
+        self._cloud_password = password
+        self._cloud_rsa_key_path = rsa_key_path
         self._cloud: YarboCloudClient | None = None  # lazily initialised
 
     # ------------------------------------------------------------------
@@ -188,7 +186,11 @@ class YarboClient:
     async def _get_cloud(self) -> YarboCloudClient:
         """Lazily initialise the cloud client."""
         if self._cloud is None:
-            self._cloud = YarboCloudClient(**self._cloud_kwargs)
+            self._cloud = YarboCloudClient(
+                username=self._cloud_username,
+                password=self._cloud_password,
+                rsa_key_path=self._cloud_rsa_key_path,
+            )
             await self._cloud.connect()
         return self._cloud
 

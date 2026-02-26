@@ -112,8 +112,13 @@ def sample_light_on() -> dict[str, int]:
 def sample_light_off() -> dict[str, int]:
     """All-off light payload."""
     keys = [
-        "led_head", "led_left_w", "led_right_w",
-        "body_left_r", "body_right_r", "tail_left_r", "tail_right_r",
+        "led_head",
+        "led_left_w",
+        "led_right_w",
+        "body_left_r",
+        "body_right_r",
+        "tail_left_r",
+        "tail_right_r",
     ]
     return dict.fromkeys(keys, 0)
 

@@ -18,7 +18,7 @@ References:
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import aiohttp
 
@@ -173,11 +173,12 @@ class YarboCloudClient:
 
         if not data.get("success", False):
             from .exceptions import YarboCommandError  # noqa: PLC0415
+
             raise YarboCommandError(
                 data.get("message", "unknown error"),
                 code=data.get("code", ""),
             )
-        return data.get("data", {})
+        return cast("dict[str, Any]", data.get("data", {}))
 
     # ------------------------------------------------------------------
     # Robot management
@@ -267,7 +268,7 @@ class YarboCloudClient:
         REST: ``GET /yarbo/msg/userDeviceMsg``
         """
         data = await self._request("GET", "/yarbo/msg/userDeviceMsg")
-        return data.get("deviceMsg", [])
+        return cast("list[dict[str, Any]]", data.get("deviceMsg", []))
 
     # ------------------------------------------------------------------
     # App version

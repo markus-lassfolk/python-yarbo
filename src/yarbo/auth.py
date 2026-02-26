@@ -20,6 +20,7 @@ import base64
 import logging
 from pathlib import Path
 import time
+from typing import Any
 
 import aiohttp
 
@@ -199,10 +200,10 @@ class YarboAuth:
         from cryptography.hazmat.primitives.asymmetric import padding  # noqa: PLC0415
 
         pub_key = self._load_public_key()
-        ciphertext = pub_key.encrypt(plaintext.encode("utf-8"), padding.PKCS1v15())  # type: ignore[union-attr]
+        ciphertext = pub_key.encrypt(plaintext.encode("utf-8"), padding.PKCS1v15())  # type: ignore[attr-defined]
         return base64.b64encode(ciphertext).decode("utf-8")
 
-    def _store_tokens(self, data: dict) -> None:
+    def _store_tokens(self, data: dict[str, Any]) -> None:
         self.access_token = data.get("accessToken", "")
         self.refresh_token = data.get("refreshToken", "")
         self.user_id = data.get("userId", "")
@@ -218,9 +219,9 @@ class YarboAuth:
     async def _post(
         self,
         path: str,
-        body: dict,
+        body: dict[str, Any],
         require_auth: bool = True,
-    ) -> dict:
+    ) -> dict[str, Any]:
         session = await self._get_session()
         headers = {"Content-Type": "application/json"}
         if require_auth and self.access_token:
@@ -232,10 +233,8 @@ class YarboAuth:
                 if resp.status == 401:
                     raise YarboTokenExpiredError(f"401 Unauthorized on {path}")
                 if resp.status == 403:
-                    raise YarboAuthError(
-                        f"403 Forbidden on {path} (may require AWS-SigV4 auth)"
-                    )
-                data = await resp.json(content_type=None)
+                    raise YarboAuthError(f"403 Forbidden on {path} (may require AWS-SigV4 auth)")
+                data: dict[str, Any] = await resp.json(content_type=None)
         except aiohttp.ClientError as exc:
             raise YarboConnectionError(f"Network error on {path}: {exc}") from exc
 

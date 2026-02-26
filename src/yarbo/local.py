@@ -35,7 +35,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from .const import (
     DEFAULT_CMD_TIMEOUT,
@@ -212,9 +212,7 @@ class YarboLocalClient:
 
     async def lights_body(self) -> None:
         """Turn on body accent lights only (red channels, others off)."""
-        await self.set_lights(
-            YarboLightState(body_left_r=255, body_right_r=255)
-        )
+        await self.set_lights(YarboLightState(body_left_r=255, body_right_r=255))
 
     # ------------------------------------------------------------------
     # Buzzer
@@ -370,7 +368,7 @@ class _SyncYarboLocalClient:
 
     def get_status(self) -> YarboTelemetry | None:
         """Fetch a telemetry snapshot."""
-        return self._run(self._client.get_status())
+        return cast("YarboTelemetry | None", self._run(self._client.get_status()))
 
     def publish_raw(self, cmd: str, payload: dict[str, Any]) -> None:
         """Publish an arbitrary command."""

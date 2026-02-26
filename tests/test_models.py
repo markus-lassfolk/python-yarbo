@@ -32,8 +32,13 @@ class TestYarboLightState:
         state = YarboLightState(led_head=100, led_right_w=50)
         d = state.to_dict()
         expected_keys = {
-            "led_head", "led_left_w", "led_right_w",
-            "body_left_r", "body_right_r", "tail_left_r", "tail_right_r",
+            "led_head",
+            "led_left_w",
+            "led_right_w",
+            "body_left_r",
+            "body_right_r",
+            "tail_left_r",
+            "tail_right_r",
         }
         assert set(d.keys()) == expected_keys
 
@@ -56,12 +61,14 @@ class TestYarboLightState:
 
 class TestYarboRobot:
     def test_from_dict_basic(self):
-        robot = YarboRobot.from_dict({
-            "sn": "YBG2412345",
-            "name": "My Yarbo",
-            "firmware": "3.11.0",
-            "isOnline": True,
-        })
+        robot = YarboRobot.from_dict(
+            {
+                "sn": "YBG2412345",
+                "name": "My Yarbo",
+                "firmware": "3.11.0",
+                "isOnline": True,
+            }
+        )
         assert robot.sn == "YBG2412345"
         assert robot.name == "My Yarbo"
         assert robot.firmware == "3.11.0"
@@ -69,10 +76,12 @@ class TestYarboRobot:
 
     def test_from_dict_alt_keys(self):
         """Handles alternate field names (serialNum, robotName, etc.)."""
-        robot = YarboRobot.from_dict({
-            "serialNum": "ABC123",
-            "snowbotName": "Snow Beast",
-        })
+        robot = YarboRobot.from_dict(
+            {
+                "serialNum": "ABC123",
+                "snowbotName": "Snow Beast",
+            }
+        )
         assert robot.sn == "ABC123"
         assert robot.name == "Snow Beast"
 
@@ -91,15 +100,15 @@ class TestYarboTelemetry:
     def test_nested_device_msg(self, sample_telemetry_dict):
         """Primary path: nested DeviceMSG format from live protocol."""
         t = YarboTelemetry.from_dict(sample_telemetry_dict)
-        assert t.battery == 83                          # BatteryMSG.capacity
-        assert t.working_state == 1                     # StateMSG.working_state
-        assert t.state == "active"                      # derived from working_state
-        assert t.charging_status == 2                   # StateMSG.charging_status
-        assert t.error_code == 0                        # StateMSG.error_code
-        assert t.heading == pytest.approx(339.4576)     # RTKMSG.heading
-        assert t.position_x == pytest.approx(1.268)     # CombinedOdom.x
-        assert t.position_y == pytest.approx(-0.338)    # CombinedOdom.y
-        assert t.phi == pytest.approx(-0.359)           # CombinedOdom.phi
+        assert t.battery == 83  # BatteryMSG.capacity
+        assert t.working_state == 1  # StateMSG.working_state
+        assert t.state == "active"  # derived from working_state
+        assert t.charging_status == 2  # StateMSG.charging_status
+        assert t.error_code == 0  # StateMSG.error_code
+        assert t.heading == pytest.approx(339.4576)  # RTKMSG.heading
+        assert t.position_x == pytest.approx(1.268)  # CombinedOdom.x
+        assert t.position_y == pytest.approx(-0.338)  # CombinedOdom.y
+        assert t.phi == pytest.approx(-0.359)  # CombinedOdom.phi
         assert t.led == 69666
         assert t.raw == sample_telemetry_dict
 
@@ -158,20 +167,22 @@ class TestYarboPlan:
         assert plan.plan_name == "Zone A"
 
     def test_from_dict_with_params(self):
-        plan = YarboPlan.from_dict({
-            "planId": "p1",
-            "planName": "Front Yard",
-            "areaId": "area-1",
-            "params": {
-                "routeAngle": 45,
-                "routeSpacing": 0.3,
-                "speed": 0.8,
-                "perimeterLaps": 2,
-                "doubleCleaning": False,
-                "edgePriority": True,
-                "turningMode": "u-turn",
-            },
-        })
+        plan = YarboPlan.from_dict(
+            {
+                "planId": "p1",
+                "planName": "Front Yard",
+                "areaId": "area-1",
+                "params": {
+                    "routeAngle": 45,
+                    "routeSpacing": 0.3,
+                    "speed": 0.8,
+                    "perimeterLaps": 2,
+                    "doubleCleaning": False,
+                    "edgePriority": True,
+                    "turningMode": "u-turn",
+                },
+            }
+        )
         assert plan.plan_id == "p1"
         assert plan.area_id == "area-1"
         assert plan.params is not None
@@ -188,15 +199,17 @@ class TestYarboPlan:
 
 class TestYarboSchedule:
     def test_from_dict(self):
-        sched = YarboSchedule.from_dict({
-            "scheduleId": "s1",
-            "planId": "p1",
-            "enabled": True,
-            "scheduleType": "weekly",
-            "weekdays": [1, 3, 5],
-            "startTime": "07:00",
-            "timezone": "America/New_York",
-        })
+        sched = YarboSchedule.from_dict(
+            {
+                "scheduleId": "s1",
+                "planId": "p1",
+                "enabled": True,
+                "scheduleType": "weekly",
+                "weekdays": [1, 3, 5],
+                "startTime": "07:00",
+                "timezone": "America/New_York",
+            }
+        )
         assert sched.schedule_id == "s1"
         assert sched.plan_id == "p1"
         assert sched.enabled is True
@@ -215,22 +228,26 @@ class TestYarboSchedule:
 class TestYarboCommandResult:
     def test_success_state_zero(self):
         """state=0 → success."""
-        result = YarboCommandResult.from_dict({
-            "topic": "get_controller",
-            "state": 0,
-            "data": {"controller": True},
-        })
+        result = YarboCommandResult.from_dict(
+            {
+                "topic": "get_controller",
+                "state": 0,
+                "data": {"controller": True},
+            }
+        )
         assert result.success is True
         assert result.topic == "get_controller"
         assert result.data == {"controller": True}
 
     def test_failure_nonzero_state(self):
         """Non-zero state → not success."""
-        result = YarboCommandResult.from_dict({
-            "topic": "light_ctrl",
-            "state": 1,
-            "data": {},
-        })
+        result = YarboCommandResult.from_dict(
+            {
+                "topic": "light_ctrl",
+                "state": 1,
+                "data": {},
+            }
+        )
         assert result.success is False
         assert result.state == 1
 
