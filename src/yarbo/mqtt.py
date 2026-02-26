@@ -28,7 +28,7 @@ import time
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
     import paho.mqtt.client as _paho
 
@@ -103,6 +103,10 @@ class MqttTransport:
         self._connected = asyncio.Event()
         # Each entry is a queue of envelope dicts: {"topic": str, "payload": dict}
         self._message_queues: list[asyncio.Queue[dict[str, Any]]] = []
+        # Reconnect tracking: True after the first successful disconnect
+        self._was_connected: bool = False
+        # Callbacks invoked (on the asyncio loop) when the transport reconnects
+        self._reconnect_callbacks: list[Callable[[], None]] = []
 
     @property
     def sn(self) -> str:
@@ -113,6 +117,16 @@ class MqttTransport:
     def is_connected(self) -> bool:
         """True if the MQTT connection is established."""
         return self._connected.is_set()
+
+    def add_reconnect_callback(self, callback: Callable[[], None]) -> None:
+        """Register a callback to be invoked on the asyncio loop after a reconnect.
+
+        A *reconnect* is any successful ``_on_connect`` that happens after the
+        transport has previously been disconnected (i.e. not the initial connect).
+        Duplicate callbacks are silently ignored.
+        """
+        if callback not in self._reconnect_callbacks:
+            self._reconnect_callbacks.append(callback)
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -362,13 +376,19 @@ class MqttTransport:
         """
         rc = getattr(reason_code, "value", reason_code)
         if rc == 0:
-            # Subscribe to all feedback topics
+            is_reconnect = self._was_connected
+            # Always re-subscribe to all feedback topics (covers both initial connect
+            # and automatic broker reconnections initiated by paho).
             for leaf in ALL_FEEDBACK_LEAVES:
                 topic = TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=leaf)
                 client.subscribe(topic, qos=self._qos)
                 logger.debug("Subscribed: %s", topic)
             if self._loop:
                 self._loop.call_soon_threadsafe(self._connected.set)
+                if is_reconnect:
+                    logger.info("MQTT reconnected — re-subscribed (sn=%s)", self._sn)
+                    for cb in list(self._reconnect_callbacks):
+                        self._loop.call_soon_threadsafe(cb)
         else:
             logger.error("MQTT connect failed rc=%s", rc)
 
@@ -382,6 +402,7 @@ class MqttTransport:
     ) -> None:
         """paho-mqtt v2 on_disconnect callback."""
         rc = getattr(reason_code, "value", reason_code)
+        self._was_connected = True  # next _on_connect is a reconnect
         if self._loop:
             self._loop.call_soon_threadsafe(self._connected.clear)
         logger.warning("MQTT disconnected rc=%s", rc)
