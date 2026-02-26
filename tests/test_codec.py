@@ -5,8 +5,6 @@ from __future__ import annotations
 import json
 import zlib
 
-import pytest
-
 from yarbo._codec import decode, encode
 
 

@@ -13,7 +13,7 @@ from yarbo.models import YarboLightState, YarboTelemetry
 @pytest.fixture
 def mock_local_client():
     """Replace YarboLocalClient with a mock in YarboClient."""
-    with patch("yarbo.client.YarboLocalClient") as MockLocal:
+    with patch("yarbo.client.YarboLocalClient") as MockLocal:  # noqa: N806
         instance = MagicMock()
         instance.connect = AsyncMock()
         instance.disconnect = AsyncMock()
@@ -102,7 +102,7 @@ class TestYarboClientTelemetry:
 @pytest.mark.asyncio
 class TestYarboClientCloud:
     async def test_list_robots_connects_cloud(self, mock_local_client):
-        with patch("yarbo.client.YarboCloudClient") as MockCloud:
+        with patch("yarbo.client.YarboCloudClient") as MockCloud:  # noqa: N806
             cloud_instance = MagicMock()
             cloud_instance.connect = AsyncMock()
             cloud_instance.disconnect = AsyncMock()

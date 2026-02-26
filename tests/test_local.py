@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
-import zlib
 from unittest.mock import AsyncMock, MagicMock, patch
+import zlib
 
 import pytest
-import pytest_asyncio
 
+from yarbo.exceptions import YarboNotControllerError
 from yarbo.local import YarboLocalClient
-from yarbo.models import YarboLightState, YarboTelemetry
+from yarbo.models import TelemetryEnvelope, YarboLightState
 
 
 def _encode(payload: dict) -> bytes:
@@ -21,7 +20,7 @@ def _encode(payload: dict) -> bytes:
 @pytest.fixture
 def mock_transport():
     """Mock MqttTransport for unit testing without a real broker."""
-    with patch("yarbo.local.MqttTransport") as MockTransport:
+    with patch("yarbo.local.MqttTransport") as MockTransport:  # noqa: N806
         instance = MagicMock()
         instance.connect = AsyncMock()
         instance.disconnect = AsyncMock()
@@ -29,8 +28,13 @@ def mock_transport():
         instance.wait_for_message = AsyncMock(return_value=None)
         instance.is_connected = True
 
+        # telemetry_stream yields TelemetryEnvelope objects (DeviceMSG kind)
         async def fake_stream():
-            yield MagicMock(battery=85, state="idle")
+            yield TelemetryEnvelope(
+                kind="DeviceMSG",
+                payload={"BatteryMSG": {"capacity": 85}, "StateMSG": {"working_state": 0}},
+                topic="snowbot/TEST123/device/DeviceMSG",
+            )
 
         instance.telemetry_stream = fake_stream
         MockTransport.return_value = instance
@@ -131,7 +135,10 @@ class TestYarboLocalClientChute:
 class TestYarboLocalClientController:
     async def test_auto_controller_fires_on_first_command(self, mock_transport):
         """get_controller is called automatically before the first action."""
-        mock_transport.wait_for_message = AsyncMock(return_value={})
+        # Return a successful command result (state=0)
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "get_controller", "state": 0, "data": {}}
+        )
         client = YarboLocalClient(broker="192.168.1.24", sn="TEST123", auto_controller=True)
         await client.connect()
         assert client._controller_acquired is False
@@ -150,6 +157,25 @@ class TestYarboLocalClientController:
         await client.lights_off()
         calls = [c[0][0] for c in mock_transport.publish.call_args_list]
         assert calls.count("get_controller") == 0
+
+    async def test_controller_rejected_raises(self, mock_transport):
+        """Robot rejecting the handshake raises YarboNotControllerError."""
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "get_controller", "state": 1, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123", auto_controller=False)
+        await client.connect()
+        with pytest.raises(YarboNotControllerError):
+            await client.get_controller()
+
+    async def test_controller_timeout_sets_acquired(self, mock_transport):
+        """On timeout (None response), controller is still marked acquired."""
+        mock_transport.wait_for_message = AsyncMock(return_value=None)
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123", auto_controller=False)
+        await client.connect()
+        result = await client.get_controller()
+        assert result is None
+        assert client._controller_acquired is True
 
 
 @pytest.mark.asyncio

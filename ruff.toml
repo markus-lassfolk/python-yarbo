@@ -28,8 +28,7 @@ select = [
 ]
 
 ignore = [
-    "ANN101",  # missing-type-self — redundant in modern Python
-    "ANN102",  # missing-type-cls — redundant
+    # ANN101 / ANN102 were removed from ruff (missing-type-self / missing-type-cls)
     "ANN401",  # any-type — sometimes unavoidable with paho callbacks
     "EM101",   # raw-string-in-exception — minor style choice
     "EM102",   # f-string-in-exception — common pattern
