@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 import zlib
 
@@ -10,7 +12,13 @@ import pytest
 
 from yarbo.exceptions import YarboNotControllerError, YarboTimeoutError
 from yarbo.local import YarboLocalClient
-from yarbo.models import TelemetryEnvelope, YarboLightState, YarboPlan, YarboSchedule, YarboTelemetry
+from yarbo.models import (
+    TelemetryEnvelope,
+    YarboLightState,
+    YarboPlan,
+    YarboSchedule,
+    YarboTelemetry,
+)
 
 
 def _encode(payload: dict) -> bytes:
@@ -612,11 +620,9 @@ class TestYarboLocalClientHealth:
         assert client.last_heartbeat is None
 
     async def test_last_heartbeat_returns_datetime(self, mock_transport):
-        import time
         mock_transport.last_heartbeat = time.time()
         client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
         await client.connect()
-        from datetime import datetime
         assert isinstance(client.last_heartbeat, datetime)
 
     async def test_is_healthy_false_when_no_heartbeat(self, mock_transport):
@@ -627,7 +633,6 @@ class TestYarboLocalClientHealth:
         assert client.is_healthy() is False
 
     async def test_is_healthy_true_when_recent_heartbeat(self, mock_transport):
-        import time
         mock_transport.last_heartbeat = time.time()
         mock_transport.is_connected = True
         client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
@@ -635,7 +640,6 @@ class TestYarboLocalClientHealth:
         assert client.is_healthy(max_age_seconds=60.0) is True
 
     async def test_is_healthy_false_when_stale_heartbeat(self, mock_transport):
-        import time
         mock_transport.last_heartbeat = time.time() - 120.0
         mock_transport.is_connected = True
         client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
