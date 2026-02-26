@@ -168,7 +168,7 @@ class MqttTransport:
         self._client = mqtt.Client(
             client_id=client_id,
             protocol=mqtt.MQTTv311,
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # type: ignore[attr-defined, unused-ignore]
         )
         if self._username:
             self._client.username_pw_set(self._username, self._password)

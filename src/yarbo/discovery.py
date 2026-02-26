@@ -193,7 +193,7 @@ async def _sniff_sn(host: str, port: int, timeout: float) -> str:
                 loop.call_soon_threadsafe(sn_future.set_result, parts[1])
 
         client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # type: ignore[attr-defined, unused-ignore]
             client_id="",  # anonymous
         )
         client.on_connect = on_connect
