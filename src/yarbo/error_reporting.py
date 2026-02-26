@@ -24,7 +24,7 @@ def init_error_reporting(
     if not enabled:
         return
 
-    import os
+    import os  # noqa: PLC0415
 
     # Check for explicit disable via empty env var
     env_dsn = os.environ.get("YARBO_SENTRY_DSN")
@@ -37,7 +37,7 @@ def init_error_reporting(
         return
 
     try:
-        import sentry_sdk
+        import sentry_sdk  # noqa: PLC0415
 
         sentry_sdk.init(
             dsn=dsn,
@@ -49,7 +49,7 @@ def init_error_reporting(
         logger.debug("Error reporting initialized (dsn=%s...)", dsn[:30])
     except ImportError:
         logger.debug("sentry-sdk not installed; error reporting disabled")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         logger.warning("Failed to initialize error reporting: %s", exc)
 
 

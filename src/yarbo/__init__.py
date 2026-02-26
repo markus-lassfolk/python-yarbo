@@ -49,13 +49,13 @@ __version__ = "0.1.0"
 __author__ = "Markus Lassfolk"
 __license__ = "MIT"
 
-from .error_reporting import init_error_reporting
 from ._codec import decode, encode
 from .client import YarboClient
 from .cloud import YarboCloudClient
 from .cloud_mqtt import YarboCloudMqttClient
 from .const import Topic
 from .discovery import DiscoveredRobot, discover_yarbo
+from .error_reporting import init_error_reporting
 from .exceptions import (
     YarboAuthError,
     YarboCommandError,
@@ -80,8 +80,6 @@ from .models import (
 )
 
 __all__ = [
-    # Error reporting (opt-out — enabled by default, set YARBO_SENTRY_DSN="" to disable)
-    "init_error_reporting",
     # Discovery
     "DiscoveredRobot",
     # Models
@@ -114,6 +112,8 @@ __all__ = [
     "decode",
     "discover_yarbo",
     "encode",
+    # Error reporting (opt-out — enabled by default, set YARBO_SENTRY_DSN="" to disable)
+    "init_error_reporting",
 ]
 
 # Opt-out error reporting: enabled by default, disable via YARBO_SENTRY_DSN=""
