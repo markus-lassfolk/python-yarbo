@@ -52,6 +52,7 @@ __license__ = "MIT"
 from ._codec import decode, encode
 from .client import YarboClient
 from .cloud import YarboCloudClient
+from .cloud_mqtt import YarboCloudMqttClient
 from .const import Topic
 from .discovery import DiscoveredRobot, discover_yarbo
 from .exceptions import (
@@ -89,6 +90,7 @@ __all__ = [
     "YarboAuthError",
     "YarboClient",
     "YarboCloudClient",
+    "YarboCloudMqttClient",
     "YarboCommandError",
     "YarboCommandResult",
     "YarboConnectionError",

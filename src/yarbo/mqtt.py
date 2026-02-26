@@ -88,6 +88,8 @@ class MqttTransport:
         password: str = "",
         connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
         qos: int = 0,
+        tls: bool = False,
+        tls_ca_certs: str | None = None,
     ) -> None:
         self._broker = broker
         self._sn = sn
@@ -96,6 +98,8 @@ class MqttTransport:
         self._password = password
         self._connect_timeout = connect_timeout
         self._qos = qos
+        self._tls = tls
+        self._tls_ca_certs = tls_ca_certs
 
         # paho Client — typed via TYPE_CHECKING import to avoid hard dependency
         self._client: _paho.Client | None = None
@@ -158,6 +162,14 @@ class MqttTransport:
         )
         if self._username:
             self._client.username_pw_set(self._username, self._password)
+
+        if self._tls:
+            import ssl  # noqa: PLC0415
+
+            self._client.tls_set(
+                ca_certs=self._tls_ca_certs,
+                cert_reqs=ssl.CERT_REQUIRED if self._tls_ca_certs else ssl.CERT_NONE,
+            )
 
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
