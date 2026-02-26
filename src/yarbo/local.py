@@ -144,6 +144,11 @@ class YarboLocalClient:
         """Robot serial number (read-only)."""
         return self._sn
 
+    @property
+    def controller_acquired(self) -> bool:
+        """True if the controller handshake has been successfully completed."""
+        return self._controller_acquired
+
     # ------------------------------------------------------------------
     # Controller handshake
     # ------------------------------------------------------------------
