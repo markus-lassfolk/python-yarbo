@@ -28,7 +28,7 @@ import time
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
     import paho.mqtt.client as _paho
 
@@ -43,6 +43,7 @@ from .const import (
     TOPIC_APP_TMPL,
     TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
+    TOPIC_LEAF_HEART_BEAT,
     Topic,
 )
 from .exceptions import YarboConnectionError, YarboTimeoutError
@@ -88,6 +89,8 @@ class MqttTransport:
         password: str = "",
         connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
         qos: int = 0,
+        tls: bool = False,
+        tls_ca_certs: str | None = None,
     ) -> None:
         self._broker = broker
         self._sn = sn
@@ -96,6 +99,8 @@ class MqttTransport:
         self._password = password
         self._connect_timeout = connect_timeout
         self._qos = qos
+        self._tls = tls
+        self._tls_ca_certs = tls_ca_certs
 
         # paho Client — typed via TYPE_CHECKING import to avoid hard dependency
         self._client: _paho.Client | None = None
@@ -103,6 +108,13 @@ class MqttTransport:
         self._connected = asyncio.Event()
         # Each entry is a queue of envelope dicts: {"topic": str, "payload": dict}
         self._message_queues: list[asyncio.Queue[dict[str, Any]]] = []
+        # Reconnect tracking: True after the first successful disconnect
+        self._was_connected: bool = False
+        # Callbacks invoked (on the asyncio loop) when the transport reconnects
+        self._reconnect_callbacks: list[Callable[[], None]] = []
+        # Epoch timestamp of the last received heart_beat message (None = none received yet).
+        # Updated directly in _on_message (paho thread) — a float write is atomic in CPython.
+        self._last_heartbeat: float | None = None
 
     @property
     def sn(self) -> str:
@@ -113,6 +125,21 @@ class MqttTransport:
     def is_connected(self) -> bool:
         """True if the MQTT connection is established."""
         return self._connected.is_set()
+
+    @property
+    def last_heartbeat(self) -> float | None:
+        """Unix epoch timestamp of the last received ``heart_beat`` message, or ``None``."""
+        return self._last_heartbeat
+
+    def add_reconnect_callback(self, callback: Callable[[], None]) -> None:
+        """Register a callback to be invoked on the asyncio loop after a reconnect.
+
+        A *reconnect* is any successful ``_on_connect`` that happens after the
+        transport has previously been disconnected (i.e. not the initial connect).
+        Duplicate callbacks are silently ignored.
+        """
+        if callback not in self._reconnect_callbacks:
+            self._reconnect_callbacks.append(callback)
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -145,6 +172,14 @@ class MqttTransport:
         if self._username:
             self._client.username_pw_set(self._username, self._password)
 
+        if self._tls:
+            import ssl  # noqa: PLC0415
+
+            self._client.tls_set(
+                ca_certs=self._tls_ca_certs,
+                cert_reqs=ssl.CERT_REQUIRED if self._tls_ca_certs else ssl.CERT_NONE,
+            )
+
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
@@ -161,7 +196,8 @@ class MqttTransport:
         try:
             await asyncio.wait_for(self._connected.wait(), timeout=self._connect_timeout)
         except TimeoutError as exc:
-            self._client.loop_stop()
+            # Run loop_stop in executor — it joins the paho thread and must not block the loop.
+            await asyncio.get_running_loop().run_in_executor(None, self._client.loop_stop)
             raise YarboTimeoutError(
                 f"Timed out waiting for MQTT connection to {self._broker}:{self._port}"
             ) from exc
@@ -173,11 +209,13 @@ class MqttTransport:
         Cleanly disconnect from the MQTT broker.
 
         Calls ``disconnect()`` first to send a clean MQTT DISCONNECT packet,
-        then ``loop_stop()`` to let paho flush pending I/O.
+        then ``loop_stop()`` (run in a thread-pool executor so it does not
+        block the asyncio event loop while joining the paho network thread).
         """
         if self._client:
             self._client.disconnect()
-            self._client.loop_stop()
+            # paho.loop_stop() joins the network thread — run off-loop to avoid blocking.
+            await asyncio.get_running_loop().run_in_executor(None, self._client.loop_stop)
             self._connected.clear()
             logger.info("MQTT disconnected from %s", self._broker)
 
@@ -210,27 +248,72 @@ class MqttTransport:
     # Receive
     # ------------------------------------------------------------------
 
+    def release_queue(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
+        """
+        Remove a pre-registered wait queue from the message queue list.
+
+        Call this if a publish fails after :meth:`create_wait_queue` but before
+        :meth:`wait_for_message` — otherwise the queue leaks and accumulates
+        copies of every future incoming message indefinitely.
+        """
+        with contextlib.suppress(ValueError):
+            self._message_queues.remove(queue)
+
+    def create_wait_queue(self) -> asyncio.Queue[dict[str, Any]]:
+        """
+        Pre-register a bounded message queue **before** publishing a command.
+
+        Call this immediately before :meth:`publish` to eliminate the
+        publish/subscribe race: if the robot's response arrives between the
+        publish and the first ``await`` in :meth:`wait_for_message`, it is
+        already captured in the returned queue.
+
+        The returned queue must be passed back to :meth:`wait_for_message`
+        via the ``_queue`` parameter.  It is automatically deregistered when
+        :meth:`wait_for_message` returns.
+
+        Returns:
+            A pre-registered :class:`asyncio.Queue` (maxsize=1000).
+        """
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
+        self._message_queues.append(queue)
+        return queue
+
     async def wait_for_message(
         self,
         timeout: float = DEFAULT_CMD_TIMEOUT,
         feedback_leaf: str = TOPIC_LEAF_DATA_FEEDBACK,
+        command_name: str | None = None,
+        _queue: asyncio.Queue[dict[str, Any]] | None = None,
     ) -> dict[str, Any] | None:
         """
         Wait for the next message matching a specific feedback topic leaf.
 
-        Creates a temporary queue that receives all incoming messages and
-        filters them by ``feedback_leaf`` (matched against the topic suffix).
+        If ``_queue`` is provided it must have been obtained via
+        :meth:`create_wait_queue` **before** the publish call so that no
+        response can be missed.  Otherwise a new queue is created here
+        (subject to the usual publish/subscribe race).
 
         Args:
             timeout:       Maximum wait time in seconds.
             feedback_leaf: Feedback topic leaf to match (default: ``data_feedback``).
                            Use ``TOPIC_LEAF_DEVICE_MSG`` for telemetry data.
+            command_name:  When set, only accept payloads whose ``topic`` field
+                           equals this value.  Prevents misrouting when multiple
+                           commands are in-flight on the same ``data_feedback``
+                           topic.
+            _queue:        Pre-registered queue from :meth:`create_wait_queue`.
+                           When supplied the queue is NOT created here and will
+                           be deregistered on return.
 
         Returns:
             Decoded message payload dict, or ``None`` on timeout.
         """
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        self._message_queues.append(queue)
+        if _queue is not None:
+            queue = _queue
+        else:
+            queue = asyncio.Queue(maxsize=1000)
+            self._message_queues.append(queue)
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         try:
@@ -242,8 +325,12 @@ class MqttTransport:
                     envelope = await asyncio.wait_for(queue.get(), timeout=remaining)
                 except TimeoutError:
                     return None
-                if Topic.leaf(envelope.get("topic", "")) == feedback_leaf:
-                    return cast("dict[str, Any]", envelope["payload"])
+                if Topic.leaf(envelope.get("topic", "")) != feedback_leaf:
+                    continue
+                payload_topic = envelope.get("payload", {}).get("topic")
+                if command_name is not None and payload_topic != command_name:
+                    continue
+                return cast("dict[str, Any]", envelope["payload"])
         finally:
             with contextlib.suppress(ValueError):
                 self._message_queues.remove(queue)
@@ -273,7 +360,7 @@ class MqttTransport:
         Yields:
             :class:`~yarbo.models.TelemetryEnvelope` for each received message.
         """
-        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=1000)
         self._message_queues.append(queue)
         try:
             while self.is_connected:
@@ -310,13 +397,19 @@ class MqttTransport:
         """
         rc = getattr(reason_code, "value", reason_code)
         if rc == 0:
-            # Subscribe to all feedback topics
+            is_reconnect = self._was_connected
+            # Always re-subscribe to all feedback topics (covers both initial connect
+            # and automatic broker reconnections initiated by paho).
             for leaf in ALL_FEEDBACK_LEAVES:
                 topic = TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=leaf)
                 client.subscribe(topic, qos=self._qos)
                 logger.debug("Subscribed: %s", topic)
             if self._loop:
                 self._loop.call_soon_threadsafe(self._connected.set)
+                if is_reconnect:
+                    logger.info("MQTT reconnected — re-subscribed (sn=%s)", self._sn)
+                    for cb in list(self._reconnect_callbacks):
+                        self._loop.call_soon_threadsafe(cb)
         else:
             logger.error("MQTT connect failed rc=%s", rc)
 
@@ -330,9 +423,25 @@ class MqttTransport:
     ) -> None:
         """paho-mqtt v2 on_disconnect callback."""
         rc = getattr(reason_code, "value", reason_code)
+        self._was_connected = True  # next _on_connect is a reconnect
         if self._loop:
             self._loop.call_soon_threadsafe(self._connected.clear)
         logger.warning("MQTT disconnected rc=%s", rc)
+
+    def _enqueue_safe(self, q: asyncio.Queue[dict[str, Any]], envelope: dict[str, Any]) -> None:
+        """
+        Enqueue *envelope* into *q*, dropping the oldest item if the queue is full.
+
+        Must be called **on the asyncio event loop** (via
+        ``loop.call_soon_threadsafe``).  Bounded queues (maxsize=1000) prevent
+        unbounded memory growth for slow consumers while preserving the newest
+        real-time data.
+        """
+        if q.full():
+            with contextlib.suppress(asyncio.QueueEmpty):
+                q.get_nowait()  # discard oldest
+        with contextlib.suppress(asyncio.QueueFull):
+            q.put_nowait(envelope)
 
     def _on_message(self, client: Any, userdata: Any, msg: Any) -> None:
         """
@@ -341,6 +450,9 @@ class MqttTransport:
         Pushes an envelope dict ``{"topic": str, "payload": dict}`` into
         every registered queue so that :meth:`wait_for_message` can filter
         by topic leaf and :meth:`telemetry_stream` can expose the kind.
+
+        Also tracks the timestamp of ``heart_beat`` messages for
+        :attr:`last_heartbeat`.
         """
         try:
             payload = decode(msg.payload)
@@ -349,9 +461,17 @@ class MqttTransport:
                 msg.topic,
                 str(payload)[:160],
             )
+            # Track heartbeat reception time (float write is atomic in CPython).
+            if Topic.leaf(msg.topic) == TOPIC_LEAF_HEART_BEAT:
+                self._last_heartbeat = time.time()
             if self._loop and self._message_queues:
                 for q in list(self._message_queues):
-                    envelope: dict[str, Any] = {"topic": msg.topic, "payload": payload}
-                    self._loop.call_soon_threadsafe(q.put_nowait, envelope)
+                    # Each consumer gets its own copy so that no two consumers
+                    # can accidentally mutate each other's view of the envelope.
+                    envelope: dict[str, Any] = {"topic": msg.topic, "payload": payload.copy()}
+                    # _enqueue_safe runs on the event loop: drops the oldest item
+                    # when the bounded queue is full so slow consumers never stall
+                    # real-time telemetry delivery.
+                    self._loop.call_soon_threadsafe(self._enqueue_safe, q, envelope)
         except Exception as exc:  # noqa: BLE001
             logger.error("Error handling MQTT message on %s: %s", getattr(msg, "topic", "?"), exc)

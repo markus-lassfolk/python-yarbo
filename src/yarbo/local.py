@@ -33,6 +33,7 @@ References:
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -41,11 +42,13 @@ from .const import (
     DEFAULT_CMD_TIMEOUT,
     LOCAL_BROKER_DEFAULT,
     LOCAL_PORT,
+    TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
     TOPIC_LEAF_DEVICE_MSG,
+    TOPIC_LEAF_PLAN_FEEDBACK,
 )
-from .exceptions import YarboNotControllerError
-from .models import YarboCommandResult, YarboLightState, YarboTelemetry
+from .exceptions import YarboNotControllerError, YarboTimeoutError
+from .models import YarboCommandResult, YarboLightState, YarboPlan, YarboSchedule, YarboTelemetry
 from .mqtt import MqttTransport
 
 if TYPE_CHECKING:
@@ -119,8 +122,17 @@ class YarboLocalClient:
     # Connection
     # ------------------------------------------------------------------
 
+    def _on_reconnect(self) -> None:
+        """Reset controller state when the transport reconnects after a drop."""
+        self._controller_acquired = False
+        logger.info(
+            "Reconnected — controller role reset, will re-acquire on next command (sn=%s)",
+            self._sn,
+        )
+
     async def connect(self) -> None:
         """Connect to the local MQTT broker."""
+        self._transport.add_reconnect_callback(self._on_reconnect)
         await self._transport.connect()
         logger.info(
             "YarboLocalClient connected to %s:%d (sn=%s)",
@@ -138,11 +150,47 @@ class YarboLocalClient:
         """True if the MQTT connection is active."""
         return self._transport.is_connected
 
+    @property
+    def serial_number(self) -> str:
+        """Robot serial number (read-only)."""
+        return self._sn
+
+    @property
+    def controller_acquired(self) -> bool:
+        """True if the controller handshake has been successfully completed."""
+        return self._controller_acquired
+
+    @property
+    def last_heartbeat(self) -> datetime | None:
+        """UTC datetime of the last received ``heart_beat`` message, or ``None``."""
+        ts = self._transport.last_heartbeat
+        if ts is None:
+            return None
+        return datetime.fromtimestamp(ts, tz=UTC)
+
+    def is_healthy(self, max_age_seconds: float = 60.0) -> bool:
+        """Return ``True`` if a heartbeat was received within *max_age_seconds*.
+
+        Args:
+            max_age_seconds: Maximum acceptable age of the last heartbeat in
+                             seconds (default 60.0).
+
+        Returns:
+            ``True`` when the transport is connected, a heartbeat has been
+            received, and the most recent one arrived within *max_age_seconds*.
+        """
+        if not self.is_connected:
+            return False
+        ts = self._transport.last_heartbeat
+        if ts is None:
+            return False
+        return (time.time() - ts) <= max_age_seconds
+
     # ------------------------------------------------------------------
     # Controller handshake
     # ------------------------------------------------------------------
 
-    async def get_controller(self) -> YarboCommandResult | None:
+    async def get_controller(self) -> YarboCommandResult:
         """
         Acquire controller role for this session.
 
@@ -153,15 +201,28 @@ class YarboLocalClient:
         handshake (non-zero ``state``), raises :exc:`~yarbo.exceptions.YarboNotControllerError`.
 
         Returns:
-            :class:`~yarbo.models.YarboCommandResult` on success, ``None`` on timeout.
+            :class:`~yarbo.models.YarboCommandResult` on success.
 
         Raises:
             YarboNotControllerError: If the robot explicitly rejects the handshake.
+            YarboTimeoutError:       If no acknowledgement is received within the
+                                     command timeout (controller flag stays ``False``).
         """
-        await self._transport.publish("get_controller", {})
+        # Pre-register the reply queue BEFORE publishing to eliminate the
+        # publish/subscribe race (response could arrive before we start waiting).
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("get_controller", {})
+        except Exception:
+            # publish() failed — wait_for_message's finally block never runs, so
+            # we must release the pre-registered queue here to prevent a leak.
+            self._transport.release_queue(wait_queue)
+            raise
         msg = await self._transport.wait_for_message(
             timeout=DEFAULT_CMD_TIMEOUT,
             feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="get_controller",
+            _queue=wait_queue,
         )
         if msg:
             result = YarboCommandResult.from_dict(msg)
@@ -173,10 +234,9 @@ class YarboLocalClient:
                 )
             self._controller_acquired = True
             return result
-        # Timeout — assume success for backward compatibility with firmware
-        # that doesn't always send data_feedback for get_controller
-        self._controller_acquired = True
-        return None
+        # Timeout — firmware that doesn't send data_feedback for get_controller.
+        # Do NOT mark as acquired; raise so the caller can decide whether to retry.
+        raise YarboTimeoutError("Timed out waiting for get_controller acknowledgement from robot.")
 
     async def _ensure_controller(self) -> None:
         """Send ``get_controller`` if not already acquired and auto mode is on."""
@@ -271,7 +331,8 @@ class YarboLocalClient:
             feedback_leaf=TOPIC_LEAF_DEVICE_MSG,
         )
         if msg:
-            return YarboTelemetry.from_dict(msg)
+            topic = TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=TOPIC_LEAF_DEVICE_MSG)
+            return YarboTelemetry.from_dict(msg, topic=topic)
         return None
 
     async def watch_telemetry(self) -> AsyncIterator[YarboTelemetry]:
@@ -292,9 +353,402 @@ class YarboLocalClient:
                 if telemetry.battery and telemetry.battery < 10:
                     break
         """
+        # Cache plan_feedback data to merge into each DeviceMSG telemetry object
+        _plan_payload: dict[str, Any] = {}
         async for envelope in self._transport.telemetry_stream():
-            if envelope.is_telemetry:
-                yield envelope.to_telemetry()
+            if envelope.kind == TOPIC_LEAF_PLAN_FEEDBACK:
+                _plan_payload = envelope.payload
+            elif envelope.is_telemetry:
+                t = envelope.to_telemetry()
+                if _plan_payload:
+                    t.plan_id = _plan_payload.get("planId")
+                    t.plan_state = _plan_payload.get("state")
+                    t.area_covered = _plan_payload.get("areaCovered")
+                    t.duration = _plan_payload.get("duration")
+                yield t
+
+    # ------------------------------------------------------------------
+    # Internal helper: publish + wait for data_feedback
+    # ------------------------------------------------------------------
+
+    async def _publish_and_wait(
+        self,
+        cmd: str,
+        payload: dict[str, Any],
+        timeout: float = DEFAULT_CMD_TIMEOUT,
+    ) -> YarboCommandResult:
+        """Publish *cmd* and wait for the matching ``data_feedback`` response.
+
+        Uses the pre-register pattern (create queue → publish → wait) to avoid
+        the publish/subscribe race for fast-responding firmware.
+
+        Raises:
+            YarboTimeoutError: If no response arrives within *timeout* seconds.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish(cmd, payload)
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name=cmd,
+            _queue=wait_queue,
+        )
+        if msg is None:
+            raise YarboTimeoutError(f"Timed out waiting for {cmd!r} response from robot.")
+        return YarboCommandResult.from_dict(msg)
+
+    # ------------------------------------------------------------------
+    # Plan management
+    # ------------------------------------------------------------------
+
+    async def start_plan(self, plan_id: str) -> YarboCommandResult:
+        """Start the plan identified by *plan_id*.
+
+        Args:
+            plan_id: UUID of the plan to execute.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("start_plan", {"planId": plan_id})
+
+    async def stop_plan(self) -> YarboCommandResult:
+        """Stop the currently running plan.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("stop_plan", {})
+
+    async def pause_plan(self) -> YarboCommandResult:
+        """Pause the currently running plan.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("pause_plan", {})
+
+    async def resume_plan(self) -> YarboCommandResult:
+        """Resume a paused plan.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("resume_plan", {})
+
+    async def return_to_dock(self) -> YarboCommandResult:
+        """Send the robot back to its charging dock (``cmd_recharge``).
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("cmd_recharge", {})
+
+    # ------------------------------------------------------------------
+    # Schedule management
+    # ------------------------------------------------------------------
+
+    async def list_schedules(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> list[YarboSchedule]:
+        """Fetch the list of saved schedules from the robot.
+
+        Sends ``read_all_schedule`` and waits for the ``data_feedback`` response.
+
+        Args:
+            timeout: Maximum wait time in seconds (default 5.0).
+
+        Returns:
+            List of :class:`~yarbo.models.YarboSchedule` objects.
+            Returns an empty list on timeout.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("read_all_schedule", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="read_all_schedule",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return []
+        data: dict[str, Any] = msg.get("data", {}) or {}
+        schedules_raw: list[Any] = data.get("scheduleList", data.get("schedules", []))
+        return [YarboSchedule.from_dict(s) for s in schedules_raw]
+
+    async def set_schedule(self, schedule: YarboSchedule) -> YarboCommandResult:
+        """Save or update a schedule on the robot.
+
+        Args:
+            schedule: :class:`~yarbo.models.YarboSchedule` to save.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("save_schedule", schedule.to_dict())
+
+    async def delete_schedule(self, schedule_id: str) -> YarboCommandResult:
+        """Delete a schedule by its ID.
+
+        Args:
+            schedule_id: UUID of the schedule to delete.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("del_schedule", {"scheduleId": schedule_id})
+
+    # ------------------------------------------------------------------
+    # Plan CRUD
+    # ------------------------------------------------------------------
+
+    async def list_plans(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> list[YarboPlan]:
+        """Fetch the list of saved plans from the robot.
+
+        Sends ``read_all_plan`` and waits for the ``data_feedback`` response.
+
+        Args:
+            timeout: Maximum wait time in seconds (default 5.0).
+
+        Returns:
+            List of :class:`~yarbo.models.YarboPlan` objects.
+            Returns an empty list on timeout.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("read_all_plan", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="read_all_plan",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return []
+        data: dict[str, Any] = msg.get("data", {}) or {}
+        plans_raw: list[Any] = data.get("planList", data.get("plans", []))
+        return [YarboPlan.from_dict(p) for p in plans_raw]
+
+    async def delete_plan(self, plan_id: str) -> YarboCommandResult:
+        """Delete a plan by its ID.
+
+        Args:
+            plan_id: UUID of the plan to delete.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("del_plan", {"planId": plan_id})
+
+    # ------------------------------------------------------------------
+    # Manual drive
+    # ------------------------------------------------------------------
+
+    async def start_manual_drive(self) -> None:
+        """Enter manual drive mode (``set_working_state`` state=manual).
+
+        Fires and forgets — no response is expected for this command.
+        Use :meth:`set_velocity`, :meth:`set_roller`, and :meth:`set_chute`
+        to control the robot while in manual mode, then call
+        :meth:`stop_manual_drive` when done.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_working_state", {"state": "manual"})
+
+    async def set_velocity(self, linear: float, angular: float = 0.0) -> None:
+        """Send a velocity command to the robot.
+
+        Args:
+            linear:  Linear velocity in m/s (forward positive).
+            angular: Angular velocity in rad/s (counter-clockwise positive).
+                     Defaults to 0.0 (straight).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_vel", {"vel": linear, "rev": angular})
+
+    async def set_roller(self, speed: int) -> None:
+        """Set the roller speed (leaf-blower/snow-blower models only).
+
+        Args:
+            speed: Roller speed in RPM (0-2000).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_roller", {"vel": speed})
+
+    async def stop_manual_drive(
+        self, hard: bool = False, emergency: bool = False
+    ) -> YarboCommandResult:
+        """Exit manual drive mode and stop the robot.
+
+        Three stop modes are supported (in increasing priority):
+
+        * ``stop_manual_drive()``              → ``dstop``   (graceful stop)
+        * ``stop_manual_drive(hard=True)``     → ``dstopp``  (hard immediate stop)
+        * ``stop_manual_drive(emergency=True)``→ ``emergency_stop_active``
+
+        Args:
+            hard:      Send an immediate hard stop (``dstopp``) instead of the
+                       default graceful stop (``dstop``).
+            emergency: Send an emergency stop (``emergency_stop_active``),
+                       overrides *hard*.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` from the robot.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        cmd = "emergency_stop_active" if emergency else ("dstopp" if hard else "dstop")
+        return await self._publish_and_wait(cmd, {})
+
+    # ------------------------------------------------------------------
+    # Global params
+    # ------------------------------------------------------------------
+
+    async def get_global_params(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> dict[str, Any]:
+        """Fetch all global robot parameters (``read_global_params``).
+
+        Args:
+            timeout: Maximum wait time in seconds (default 5.0).
+
+        Returns:
+            Dict of global parameters as returned by the robot.
+            Returns an empty dict on timeout.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("read_global_params", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="read_global_params",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return {}
+        return dict(msg.get("data", {}) or {})
+
+    async def set_global_params(self, params: dict[str, Any]) -> YarboCommandResult:
+        """Save global robot parameters (``cmd_save_para``).
+
+        Args:
+            params: Dict of parameter key/value pairs to save.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("cmd_save_para", params)
+
+    # ------------------------------------------------------------------
+    # Map retrieval
+    # ------------------------------------------------------------------
+
+    async def get_map(self, timeout: float = 10.0) -> dict[str, Any]:
+        """Retrieve the robot's current map data (``get_map``).
+
+        Args:
+            timeout: Maximum wait time in seconds (default 10.0).
+
+        Returns:
+            Map data dict as returned by the robot.
+            Returns an empty dict on timeout.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("get_map", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="get_map",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return {}
+        return dict(msg.get("data", {}) or {})
+
+    # ------------------------------------------------------------------
+    # Plan creation
+    # ------------------------------------------------------------------
+
+    async def create_plan(
+        self,
+        name: str,
+        area_ids: list[int],
+        enable_self_order: bool = False,
+    ) -> YarboCommandResult:
+        """Create a new work plan on the robot (``save_plan``).
+
+        Args:
+            name:              Display name for the plan.
+            area_ids:          List of area IDs to include.
+            enable_self_order: Whether the robot should self-order the areas.
+                               Defaults to ``False``.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        payload: dict[str, Any] = {
+            "name": name,
+            "areaIds": area_ids,
+            "enable_self_order": enable_self_order,
+        }
+        return await self._publish_and_wait("save_plan", payload)
 
     # ------------------------------------------------------------------
     # Raw publish (escape hatch)
