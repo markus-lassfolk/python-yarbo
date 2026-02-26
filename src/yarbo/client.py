@@ -138,6 +138,11 @@ class YarboClient:
         """True if the local MQTT connection is active."""
         return self._local.is_connected
 
+    @property
+    def serial_number(self) -> str:
+        """Robot serial number (read-only)."""
+        return self._local.serial_number
+
     # ------------------------------------------------------------------
     # Local commands (delegated to YarboLocalClient)
     # ------------------------------------------------------------------

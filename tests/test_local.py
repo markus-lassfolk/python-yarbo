@@ -64,6 +64,10 @@ class TestYarboLocalClientConnect:
         await client.connect()
         assert client.is_connected is True
 
+    async def test_serial_number(self, mock_transport):
+        client = YarboLocalClient(broker="192.168.1.24", sn="24400102L8HO5227")
+        assert client.serial_number == "24400102L8HO5227"
+
 
 @pytest.mark.asyncio
 class TestYarboLocalClientLights:
