@@ -79,41 +79,43 @@ from .models import (
     YarboTelemetry,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022 — grouped by category, alphabetical within each
+    # Version
+    "__version__",
+    # Codec helpers
+    "decode",
+    "encode",
+    # Error reporting
+    "init_error_reporting",
     # Discovery
     "DiscoveredRobot",
-    # Models
+    "discover_yarbo",
+    # Topic helper
+    "Topic",
+    # Models (alphabetical)
     "HeadType",
     "TelemetryEnvelope",
-    # Helpers
-    "Topic",
-    # Core clients
-    "YarboAuthError",
-    "YarboClient",
-    "YarboCloudClient",
-    "YarboCloudMqttClient",
-    "YarboCommandError",
     "YarboCommandResult",
-    "YarboConnectionError",
-    "YarboError",
     "YarboLightState",
-    "YarboLocalClient",
-    "YarboNotControllerError",
     "YarboPlan",
     "YarboPlanParams",
-    "YarboProtocolError",
     "YarboRobot",
     "YarboSchedule",
     "YarboTelemetry",
+    # Clients (alphabetical)
+    "YarboClient",
+    "YarboCloudClient",
+    "YarboCloudMqttClient",
+    "YarboLocalClient",
+    # Exceptions (alphabetical)
+    "YarboAuthError",
+    "YarboCommandError",
+    "YarboConnectionError",
+    "YarboError",
+    "YarboNotControllerError",
+    "YarboProtocolError",
     "YarboTimeoutError",
     "YarboTokenExpiredError",
-    "__version__",
-    # Codec
-    "decode",
-    "discover_yarbo",
-    "encode",
-    # Error reporting (opt-out — enabled by default, set YARBO_SENTRY_DSN="" to disable)
-    "init_error_reporting",
 ]
 
 # Opt-out error reporting: enabled by default, disable via YARBO_SENTRY_DSN=""
