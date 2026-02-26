@@ -55,7 +55,7 @@ def decode(data: bytes) -> dict[str, Any]:
     """
     try:
         return cast("dict[str, Any]", json.loads(zlib.decompress(data)))
-    except zlib.error:
+    except (zlib.error, json.JSONDecodeError):
         pass
     try:
         return cast("dict[str, Any]", json.loads(data))

@@ -22,6 +22,8 @@ import asyncio
 from dataclasses import dataclass
 import logging
 
+from .const import LOCAL_BROKER_DEFAULT, LOCAL_BROKER_SECONDARY
+
 logger = logging.getLogger(__name__)
 
 #: Maximum simultaneous broker probes during subnet scanning.
@@ -29,8 +31,8 @@ _SCAN_CONCURRENCY = 50
 
 #: Well-known local broker IPs observed in the wild.
 KNOWN_BROKER_IPS: list[str] = [
-    "192.168.1.24",  # confirmed from live HaLow capture (primary)
-    "192.168.1.55",  # confirmed from live HaLow capture (secondary)
+    LOCAL_BROKER_DEFAULT,  # confirmed from live HaLow capture (primary)
+    LOCAL_BROKER_SECONDARY,  # confirmed from live HaLow capture (secondary)
     "192.168.8.8",  # Yarbo AP mode default gateway
     "192.168.1.1",
     "192.168.0.1",
@@ -114,7 +116,7 @@ async def discover_yarbo(
     results: list[DiscoveredRobot] = []
     probed = await asyncio.gather(*(probe_with_limit(ip) for ip in unique_candidates))
 
-    for ip, result in zip(unique_candidates, probed, strict=False):
+    for ip, result in zip(unique_candidates, probed, strict=True):
         if isinstance(result, DiscoveredRobot):
             results.append(result)
         elif isinstance(result, Exception):
@@ -204,8 +206,8 @@ async def _sniff_sn(host: str, port: int, timeout: float) -> str:
         except TimeoutError:
             return ""
         finally:
-            client.loop_stop()
             client.disconnect()
+            await loop.run_in_executor(None, client.loop_stop)
 
     except ImportError:
         logger.debug("paho-mqtt not installed — cannot sniff SN")

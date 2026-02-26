@@ -8,7 +8,7 @@ import zlib
 
 import pytest
 
-from yarbo.exceptions import YarboNotControllerError
+from yarbo.exceptions import YarboNotControllerError, YarboTimeoutError
 from yarbo.local import YarboLocalClient
 from yarbo.models import TelemetryEnvelope, YarboLightState
 
@@ -26,6 +26,7 @@ def mock_transport():
         instance.disconnect = AsyncMock()
         instance.publish = AsyncMock()
         instance.wait_for_message = AsyncMock(return_value=None)
+        instance.create_wait_queue = MagicMock(return_value=MagicMock())
         instance.is_connected = True
 
         # telemetry_stream yields TelemetryEnvelope objects (DeviceMSG kind)
@@ -168,14 +169,18 @@ class TestYarboLocalClientController:
         with pytest.raises(YarboNotControllerError):
             await client.get_controller()
 
-    async def test_controller_timeout_sets_acquired(self, mock_transport):
-        """On timeout (None response), controller is still marked acquired."""
+    async def test_controller_timeout_raises(self, mock_transport):
+        """On timeout (None response from transport), get_controller raises YarboTimeoutError.
+
+        The controller flag MUST NOT be set to True — the robot never acknowledged
+        the handshake, so we cannot assume control was granted.
+        """
         mock_transport.wait_for_message = AsyncMock(return_value=None)
         client = YarboLocalClient(broker="192.168.1.24", sn="TEST123", auto_controller=False)
         await client.connect()
-        result = await client.get_controller()
-        assert result is None
-        assert client._controller_acquired is True
+        with pytest.raises(YarboTimeoutError):
+            await client.get_controller()
+        assert client._controller_acquired is False
 
 
 @pytest.mark.asyncio
