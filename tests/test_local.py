@@ -185,9 +185,7 @@ class TestYarboLocalClientController:
 
 @pytest.mark.asyncio
 class TestYarboLocalClientTelemetry:
-    async def test_get_status_derives_sn_from_topic_when_missing_from_payload(
-        self, mock_transport
-    ):
+    async def test_get_status_derives_sn_from_topic_when_missing_from_payload(self, mock_transport):
         """get_status passes envelope topic to from_dict so sn is derived when absent."""
         mock_transport.wait_for_message = AsyncMock(
             return_value={
