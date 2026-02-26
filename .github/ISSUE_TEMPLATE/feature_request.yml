@@ -1,0 +1,61 @@
+name: Feature Request
+description: Suggest a new feature or enhancement for python-yarbo.
+title: "[Feature]: "
+labels: ["enhancement"]
+assignees:
+  - markus-lassfolk
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Got an idea to make python-yarbo better? Great — describe it below!
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: Is your feature request related to a problem? Describe it.
+      placeholder: "I find it frustrating when..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: A clear description of what you want to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative solutions or workarounds?
+
+  - type: textarea
+    id: api-sketch
+    attributes:
+      label: API sketch (optional)
+      description: If you have an idea of what the Python API would look like, sketch it here.
+      render: python
+      placeholder: |
+        # Example:
+        async with YarboClient(broker="192.168.1.24", sn="...") as client:
+            await client.start_plan("morning-route")
+            async for event in client.watch_plan_events():
+                print(event.status)
+
+  - type: checkboxes
+    id: willing-to-pr
+    attributes:
+      label: Would you like to implement this?
+      options:
+        - label: Yes, I'd like to submit a PR for this feature.
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any other context, links to protocol docs, or related issues.

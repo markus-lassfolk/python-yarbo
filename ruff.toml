@@ -1,0 +1,50 @@
+# Ruff linter + formatter configuration for python-yarbo
+# https://docs.astral.sh/ruff/
+
+target-version = "py311"
+line-length = 100
+indent-width = 4
+
+[lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific rules
+    "ANN",  # flake8-annotations (type hints)
+    "BLE",  # flake8-blind-except
+    "DTZ",  # flake8-datetimez
+    "EM",   # flake8-errmsg
+    "PTH",  # flake8-use-pathlib
+    "T20",  # flake8-print
+    "PL",   # Pylint
+]
+
+ignore = [
+    "ANN101",  # missing-type-self — redundant in modern Python
+    "ANN102",  # missing-type-cls — redundant
+    "ANN401",  # any-type — sometimes unavoidable with paho callbacks
+    "EM101",   # raw-string-in-exception — minor style choice
+    "EM102",   # f-string-in-exception — common pattern
+    "PLR0913", # too-many-arguments — some constructors are complex
+    "PLR2004", # magic-value-comparison — allow e.g. rc == 0 for MQTT
+    "T201",    # print — allowed in examples/
+]
+
+per-file-ignores = { "tests/**" = ["ANN", "PLR", "S101", "T201"], "examples/**" = ["T201", "ANN"] }
+
+[lint.isort]
+known-first-party = ["yarbo"]
+force-sort-within-sections = true
+
+[format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false

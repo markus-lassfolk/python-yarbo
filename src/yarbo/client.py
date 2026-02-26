@@ -1,0 +1,215 @@
+"""
+yarbo.client — YarboClient: hybrid orchestrator (local preferred, cloud fallback).
+
+``YarboClient`` is the primary entry point for most users. It prefers local
+MQTT control (fast, offline) and falls back to the cloud API for features
+that require it (robot binding, account management, etc.).
+
+Usage::
+
+    # Async context manager
+    async with YarboClient(broker="192.168.1.24", sn="24400102L8HO5227") as client:
+        status = await client.get_status()
+        await client.lights_on()
+        async for telemetry in client.watch_telemetry():
+            print(f"Battery: {telemetry.battery}%")
+
+    # Sync wrapper
+    client = YarboClient.connect(broker="192.168.1.24", sn="24400102L8HO5227")
+    client.lights_on()
+    client.disconnect()
+
+    # Auto-discovery
+    from yarbo import discover_yarbo
+    robots = await discover_yarbo()
+    if robots:
+        async with YarboClient(broker=robots[0].broker_host, sn=robots[0].sn) as client:
+            await client.lights_on()
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import AsyncIterator
+from types import TracebackType
+from typing import Any
+
+from .cloud import YarboCloudClient
+from .const import LOCAL_BROKER_DEFAULT, LOCAL_PORT
+from .exceptions import YarboConnectionError
+from .local import YarboLocalClient, _SyncYarboLocalClient
+from .models import YarboCommandResult, YarboLightState, YarboTelemetry
+
+logger = logging.getLogger(__name__)
+
+
+class YarboClient:
+    """
+    Hybrid Yarbo client — prefers local MQTT control, falls back to cloud.
+
+    For purely local usage (no cloud account), this client is equivalent to
+    :class:`~yarbo.local.YarboLocalClient`.
+
+    Cloud features (``list_robots``, account management) are available when
+    ``username`` and ``password`` are provided.
+
+    Args:
+        broker:    Local MQTT broker IP address.
+        sn:        Robot serial number.
+        port:      MQTT broker port (default 1883).
+        username:  Cloud account email (optional — for cloud features only).
+        password:  Cloud account password (optional).
+        rsa_key_path: Path to the RSA public key PEM (for cloud auth).
+        auto_controller: Send ``get_controller`` automatically (default True).
+    """
+
+    def __init__(
+        self,
+        broker: str = LOCAL_BROKER_DEFAULT,
+        sn: str = "",
+        port: int = LOCAL_PORT,
+        username: str = "",
+        password: str = "",
+        rsa_key_path: str | None = None,
+        auto_controller: bool = True,
+    ) -> None:
+        self._local = YarboLocalClient(
+            broker=broker,
+            sn=sn,
+            port=port,
+            auto_controller=auto_controller,
+        )
+        self._cloud_kwargs = dict(
+            username=username,
+            password=password,
+            rsa_key_path=rsa_key_path,
+        )
+        self._cloud: YarboCloudClient | None = None  # lazily initialised
+
+    # ------------------------------------------------------------------
+    # Context manager
+    # ------------------------------------------------------------------
+
+    async def __aenter__(self) -> "YarboClient":
+        await self._local.connect()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        await self._local.disconnect()
+        if self._cloud:
+            await self._cloud.disconnect()
+
+    # ------------------------------------------------------------------
+    # Connection
+    # ------------------------------------------------------------------
+
+    async def connect(self) -> None:
+        """Connect to the local MQTT broker."""
+        await self._local.connect()
+
+    async def disconnect(self) -> None:
+        """Disconnect from the broker and cloud client."""
+        await self._local.disconnect()
+        if self._cloud:
+            await self._cloud.disconnect()
+
+    @property
+    def is_connected(self) -> bool:
+        """True if the local MQTT connection is active."""
+        return self._local.is_connected
+
+    # ------------------------------------------------------------------
+    # Local commands (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def get_controller(self) -> YarboCommandResult | None:
+        """Acquire controller role. Called automatically before most commands."""
+        return await self._local.get_controller()
+
+    async def get_status(self, timeout: float = 5.0) -> YarboTelemetry | None:
+        """Return a single telemetry snapshot from the robot."""
+        return await self._local.get_status(timeout=timeout)
+
+    async def watch_telemetry(self) -> AsyncIterator[YarboTelemetry]:
+        """Async generator yielding live telemetry from the robot."""
+        async for t in self._local.watch_telemetry():
+            yield t
+
+    async def set_lights(self, state: YarboLightState) -> None:
+        """Set all 7 LED channels."""
+        await self._local.set_lights(state)
+
+    async def lights_on(self) -> None:
+        """Turn all lights on at full brightness."""
+        await self._local.lights_on()
+
+    async def lights_off(self) -> None:
+        """Turn all lights off."""
+        await self._local.lights_off()
+
+    async def buzzer(self, state: int = 1) -> None:
+        """Trigger the buzzer (state=1 play, state=0 stop)."""
+        await self._local.buzzer(state=state)
+
+    async def set_chute(self, vel: int) -> None:
+        """Set snow chute direction (snow blower models only)."""
+        await self._local.set_chute(vel=vel)
+
+    async def publish_raw(self, cmd: str, payload: dict[str, Any]) -> None:
+        """Publish an arbitrary MQTT command to the robot."""
+        await self._local.publish_raw(cmd, payload)
+
+    # ------------------------------------------------------------------
+    # Cloud features (lazy-initialised)
+    # ------------------------------------------------------------------
+
+    async def _get_cloud(self) -> "YarboCloudClient":
+        """Lazily initialise the cloud client."""
+        if self._cloud is None:
+            self._cloud = YarboCloudClient(**self._cloud_kwargs)
+            await self._cloud.connect()
+        return self._cloud
+
+    async def list_robots(self) -> list[Any]:
+        """
+        List all robots bound to the cloud account.
+
+        Requires ``username`` and ``password`` to be provided at construction.
+        """
+        cloud = await self._get_cloud()
+        return await cloud.list_robots()
+
+    async def get_latest_version(self) -> dict[str, Any]:
+        """Get the latest app, firmware, and dock-controller versions from the cloud."""
+        cloud = await self._get_cloud()
+        return await cloud.get_latest_version()
+
+    # ------------------------------------------------------------------
+    # Sync factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def connect_sync(
+        cls,
+        broker: str = LOCAL_BROKER_DEFAULT,
+        sn: str = "",
+        port: int = LOCAL_PORT,
+    ) -> "_SyncYarboLocalClient":
+        """
+        Create a synchronous (blocking) client.
+
+        This is a convenience factory for scripts and interactive sessions.
+        Returns a :class:`~yarbo.local._SyncYarboLocalClient` wrapper.
+
+        Example::
+
+            client = YarboClient.connect_sync(broker="192.168.1.24", sn="24400102...")
+            client.lights_on()
+            client.disconnect()
+        """
+        return _SyncYarboLocalClient(broker=broker, sn=sn, port=port)

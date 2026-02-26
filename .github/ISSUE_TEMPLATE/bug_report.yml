@@ -1,0 +1,110 @@
+name: Bug Report
+description: Report a bug or unexpected behaviour in python-yarbo.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+assignees:
+  - markus-lassfolk
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill in as much detail as possible.
+        **Do not include credentials, IP addresses, or serial numbers in this report.**
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the bug
+      description: A clear and concise description of what the bug is.
+      placeholder: Tell us what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Steps to reproduce the behaviour.
+      placeholder: |
+        1. Import the library
+        2. Run `async with YarboClient(...) as client:`
+        3. Call `await client.lights_on()`
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What actually happened? Include full tracebacks (redact any sensitive data).
+    validations:
+      required: true
+
+  - type: input
+    id: lib-version
+    attributes:
+      label: python-yarbo version
+      placeholder: "e.g. 0.1.0 — run `pip show python-yarbo`"
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "e.g. 3.12.3 — run `python --version`"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Ubuntu 24.04
+        - Ubuntu 22.04
+        - Debian 12
+        - macOS 14 (Sonoma)
+        - macOS 13 (Ventura)
+        - Windows 11
+        - Windows 10
+        - Raspberry Pi OS
+        - Other (specify in additional context)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport used
+      options:
+        - Local MQTT (YarboLocalClient / same WiFi as robot)
+        - Cloud API (YarboCloudClient)
+        - Hybrid (YarboClient)
+        - Discovery (discover_yarbo)
+    validations:
+      required: true
+
+  - type: input
+    id: yarbo-model
+    attributes:
+      label: Yarbo model
+      placeholder: "e.g. Yarbo G1, Yarbo S1 (snow blower)"
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: |
+        Anything else that might help — logs (redact credentials/IPs/SNs),
+        MQTT captures, code snippets, etc.

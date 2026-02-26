@@ -1,0 +1,54 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'  # Weekly on Monday at 08:00 UTC
+  push:
+    branches: [main, develop]
+    paths:
+      - 'pyproject.toml'
+      - 'src/**'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: read
+  security-events: write  # For SARIF upload if added later
+
+jobs:
+  audit:
+    name: pip-audit (dependency CVEs)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and dev dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Run pip-audit
+        run: pip-audit --strict
+
+  bandit:
+    name: bandit (static analysis)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install bandit
+        run: pip install "bandit[toml]"
+
+      - name: Run bandit
+        run: bandit -r src/yarbo/ -c pyproject.toml -ll
