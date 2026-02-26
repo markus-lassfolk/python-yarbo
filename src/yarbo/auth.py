@@ -18,17 +18,12 @@ from __future__ import annotations
 
 import base64
 import logging
-import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+import time
 
 import aiohttp
 
 from .exceptions import YarboAuthError, YarboConnectionError, YarboTokenExpiredError
-from .models import YarboRobot
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +76,17 @@ class YarboAuth:
 
     @staticmethod
     def _default_key_path() -> Path:
-        """Return the vendored RSA key path (package-relative)."""
+        """
+        Return the vendored RSA key path (package-relative).
+
+        .. warning::
+            The vendored key at ``src/yarbo/keys/rsa_public_key.pem`` is a
+            **placeholder** — cloud auth will fail until it is replaced with
+            the real key extracted from the Yarbo APK.
+
+            See ``src/yarbo/keys/README.md`` for extraction instructions, or
+            supply the real key path via ``rsa_key_path`` at construction time.
+        """
         return Path(__file__).parent / "keys" / "rsa_public_key.pem"
 
     # ------------------------------------------------------------------
@@ -168,9 +173,9 @@ class YarboAuth:
     def _load_public_key(self) -> object:
         if self._public_key is None:
             try:
-                from cryptography.hazmat.primitives import serialization
+                from cryptography.hazmat.primitives import serialization  # noqa: PLC0415
 
-                with open(self._key_path, "rb") as fh:
+                with Path(self._key_path).open("rb") as fh:
                     self._public_key = serialization.load_pem_public_key(fh.read())
             except FileNotFoundError as exc:
                 raise YarboAuthError(
@@ -191,7 +196,7 @@ class YarboAuth:
         NOTE: PKCS1v15 is the ACTUAL padding used despite OAEP references in
         the Flutter source. Confirmed by live testing with the production API.
         """
-        from cryptography.hazmat.primitives.asymmetric import padding
+        from cryptography.hazmat.primitives.asymmetric import padding  # noqa: PLC0415
 
         pub_key = self._load_public_key()
         ciphertext = pub_key.encrypt(plaintext.encode("utf-8"), padding.PKCS1v15())  # type: ignore[union-attr]
@@ -222,7 +227,8 @@ class YarboAuth:
             headers["Authorization"] = f"Bearer {self.access_token}"
         url = self._base_url + path
         try:
-            async with session.post(url, json=body, headers=headers, timeout=aiohttp.ClientTimeout(total=20)) as resp:
+            timeout = aiohttp.ClientTimeout(total=20)
+            async with session.post(url, json=body, headers=headers, timeout=timeout) as resp:
                 if resp.status == 401:
                     raise YarboTokenExpiredError(f"401 Unauthorized on {path}")
                 if resp.status == 403:

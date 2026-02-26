@@ -18,8 +18,7 @@ References:
 from __future__ import annotations
 
 import logging
-from types import TracebackType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import aiohttp
 
@@ -27,6 +26,9 @@ from .auth import YarboAuth
 from .const import REST_BASE_URL
 from .exceptions import YarboAuthError, YarboConnectionError
 from .models import YarboRobot
+
+if TYPE_CHECKING:
+    from types import TracebackType
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,7 @@ class YarboCloudClient:
     # Context manager
     # ------------------------------------------------------------------
 
-    async def __aenter__(self) -> "YarboCloudClient":
+    async def __aenter__(self) -> YarboCloudClient:
         await self.connect()
         return self
 
@@ -114,7 +116,27 @@ class YarboCloudClient:
         params: dict[str, Any] | None = None,
         require_auth: bool = True,
     ) -> dict[str, Any]:
-        """Send an authenticated request and return the parsed JSON data dict."""
+        """
+        Send an authenticated REST request and return the parsed ``data`` dict.
+
+        Handles token refresh, 401/403 translation, and the Yarbo API's
+        ``{"success": bool, "data": {...}, "message": str}`` envelope.
+
+        Args:
+            method:       HTTP method (``"GET"`` or ``"POST"``).
+            path:         API path relative to the base URL.
+            body:         JSON body for POST requests.
+            params:       Query parameters for GET requests.
+            require_auth: If True, ensure a valid token and add Authorization header.
+
+        Returns:
+            The ``data`` dict from the API response envelope.
+
+        Raises:
+            YarboConnectionError: On network failure or if not connected.
+            YarboAuthError:       On 401/403 responses.
+            YarboCommandError:    If ``success`` is ``False`` in the response.
+        """
         if require_auth:
             await self.auth.ensure_valid_token()
 
@@ -126,26 +148,31 @@ class YarboCloudClient:
             headers.update(self.auth.auth_headers)
 
         url = self._base_url + path
-        try:
-            if method == "GET":
-                resp_ctx = self._session.get(url, headers=headers, params=params)
-            elif method == "POST":
-                resp_ctx = self._session.post(url, headers=headers, json=body or {})
-            else:
-                raise ValueError(f"Unsupported method: {method}")
+        request_method = getattr(self._session, method.lower(), None)
+        if request_method is None:
+            raise ValueError(f"Unsupported HTTP method: {method!r}")
 
-            async with resp_ctx as resp:
+        kwargs: dict[str, Any] = {"headers": headers}
+        if method == "GET":
+            kwargs["params"] = params
+        else:
+            kwargs["json"] = body or {}
+
+        try:
+            async with request_method(url, **kwargs) as resp:
+                if resp.status == 401:
+                    raise YarboAuthError(f"401 Unauthorized on {path}")
                 if resp.status == 403:
                     raise YarboAuthError(
                         f"403 Forbidden on {path}. "
                         "This endpoint may require AWS-SigV4 auth (not plain JWT)."
                     )
-                data = await resp.json(content_type=None)
+                data: dict[str, Any] = await resp.json(content_type=None)
         except aiohttp.ClientError as exc:
             raise YarboConnectionError(f"Network error on {path}: {exc}") from exc
 
         if not data.get("success", False):
-            from .exceptions import YarboCommandError
+            from .exceptions import YarboCommandError  # noqa: PLC0415
             raise YarboCommandError(
                 data.get("message", "unknown error"),
                 code=data.get("code", ""),
