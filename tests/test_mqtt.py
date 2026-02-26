@@ -420,3 +420,102 @@ class TestCodecHeartbeat:
         plain = json.dumps({"working_state": 1}).encode()
         result = decode(plain)
         assert result == {"working_state": 1}
+
+
+@pytest.mark.asyncio
+class TestMqttReconnect:
+    """Test reconnect re-subscription and callback logic."""
+
+    async def _make_transport(self) -> MqttTransport:
+        t = MqttTransport(broker="localhost", sn="SN1")
+        t._loop = asyncio.get_running_loop()
+        t._connected.set()
+        return t
+
+    async def test_reconnect_callbacks_not_called_on_initial_connect(self):
+        """Reconnect callbacks must NOT fire on the very first connect."""
+        transport = await self._make_transport()
+        fired: list[bool] = []
+        transport.add_reconnect_callback(lambda: fired.append(True))
+
+        mock_client = MagicMock()
+        transport._client = mock_client
+        transport._was_connected = False  # initial state
+
+        transport._on_connect(mock_client, None, None, 0, None)
+        await asyncio.sleep(0)
+        assert fired == []
+
+    async def test_reconnect_callbacks_called_on_reconnect(self):
+        """Reconnect callbacks fire after a disconnect + reconnect cycle."""
+        transport = await self._make_transport()
+        fired: list[bool] = []
+        transport.add_reconnect_callback(lambda: fired.append(True))
+
+        mock_client = MagicMock()
+        transport._client = mock_client
+
+        # Simulate disconnect first
+        transport._on_disconnect(mock_client, None, None, 0, None)
+        await asyncio.sleep(0)
+        assert transport._was_connected is True
+
+        # Now reconnect — callback should fire
+        transport._on_connect(mock_client, None, None, 0, None)
+        await asyncio.sleep(0)
+        assert len(fired) == 1
+
+    async def test_subscriptions_reapplied_on_reconnect(self):
+        """All feedback topics are re-subscribed on reconnect."""
+        transport = await self._make_transport()
+        mock_client = MagicMock()
+        transport._client = mock_client
+        transport._qos = 0
+
+        # Simulate disconnect + reconnect
+        transport._on_disconnect(mock_client, None, None, 0, None)
+        await asyncio.sleep(0)
+        mock_client.subscribe.reset_mock()
+
+        transport._on_connect(mock_client, None, None, 0, None)
+        await asyncio.sleep(0)
+
+        subscribed = [c[0][0] for c in mock_client.subscribe.call_args_list]
+        for leaf in ALL_FEEDBACK_LEAVES:
+            expected = TOPIC_DEVICE_TMPL.format(sn="SN1", feedback=leaf)
+            assert expected in subscribed
+
+    async def test_no_duplicate_reconnect_callbacks(self):
+        """add_reconnect_callback ignores duplicate registrations."""
+        transport = await self._make_transport()
+        fired: list[int] = []
+
+        def cb() -> None:
+            fired.append(1)
+
+        transport.add_reconnect_callback(cb)
+        transport.add_reconnect_callback(cb)
+        assert len(transport._reconnect_callbacks) == 1
+
+    async def test_local_client_resets_controller_on_reconnect(self):
+        """YarboLocalClient resets _controller_acquired when transport reconnects."""
+        from unittest.mock import AsyncMock, patch as _patch
+
+        with _patch("yarbo.local.MqttTransport") as MockT:  # noqa: N806
+            instance = MagicMock()
+            instance.connect = AsyncMock()
+            instance.is_connected = True
+            callbacks: list = []
+            instance.add_reconnect_callback = MagicMock(side_effect=callbacks.append)
+            MockT.return_value = instance
+
+            from yarbo.local import YarboLocalClient
+
+            client = YarboLocalClient(broker="192.168.1.24", sn="TEST")
+            client._controller_acquired = True
+            await client.connect()
+
+            # Trigger the registered reconnect callback directly
+            assert len(callbacks) == 1
+            callbacks[0]()  # simulates transport reconnect
+            assert client._controller_acquired is False

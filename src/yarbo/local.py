@@ -120,8 +120,17 @@ class YarboLocalClient:
     # Connection
     # ------------------------------------------------------------------
 
+    def _on_reconnect(self) -> None:
+        """Reset controller state when the transport reconnects after a drop."""
+        self._controller_acquired = False
+        logger.info(
+            "Reconnected — controller role reset, will re-acquire on next command (sn=%s)",
+            self._sn,
+        )
+
     async def connect(self) -> None:
         """Connect to the local MQTT broker."""
+        self._transport.add_reconnect_callback(self._on_reconnect)
         await self._transport.connect()
         logger.info(
             "YarboLocalClient connected to %s:%d (sn=%s)",
