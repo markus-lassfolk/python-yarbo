@@ -185,6 +185,30 @@ class YarboClient:
         await self._local.publish_raw(cmd, payload)
 
     # ------------------------------------------------------------------
+    # Plan management (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def start_plan(self, plan_id: str) -> YarboCommandResult:
+        """Start the plan identified by *plan_id*."""
+        return await self._local.start_plan(plan_id)
+
+    async def stop_plan(self) -> YarboCommandResult:
+        """Stop the currently running plan."""
+        return await self._local.stop_plan()
+
+    async def pause_plan(self) -> YarboCommandResult:
+        """Pause the currently running plan."""
+        return await self._local.pause_plan()
+
+    async def resume_plan(self) -> YarboCommandResult:
+        """Resume a paused plan."""
+        return await self._local.resume_plan()
+
+    async def return_to_dock(self) -> YarboCommandResult:
+        """Send the robot back to its charging dock."""
+        return await self._local.return_to_dock()
+
+    # ------------------------------------------------------------------
     # Cloud features (lazy-initialised)
     # ------------------------------------------------------------------
 

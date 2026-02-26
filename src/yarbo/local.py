@@ -330,6 +330,107 @@ class YarboLocalClient:
                 yield envelope.to_telemetry()
 
     # ------------------------------------------------------------------
+    # Internal helper: publish + wait for data_feedback
+    # ------------------------------------------------------------------
+
+    async def _publish_and_wait(
+        self,
+        cmd: str,
+        payload: dict[str, Any],
+        timeout: float = DEFAULT_CMD_TIMEOUT,
+    ) -> YarboCommandResult:
+        """Publish *cmd* and wait for the matching ``data_feedback`` response.
+
+        Uses the pre-register pattern (create queue → publish → wait) to avoid
+        the publish/subscribe race for fast-responding firmware.
+
+        Raises:
+            YarboTimeoutError: If no response arrives within *timeout* seconds.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish(cmd, payload)
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name=cmd,
+            _queue=wait_queue,
+        )
+        if msg is None:
+            raise YarboTimeoutError(f"Timed out waiting for {cmd!r} response from robot.")
+        return YarboCommandResult.from_dict(msg)
+
+    # ------------------------------------------------------------------
+    # Plan management
+    # ------------------------------------------------------------------
+
+    async def start_plan(self, plan_id: str) -> YarboCommandResult:
+        """Start the plan identified by *plan_id*.
+
+        Args:
+            plan_id: UUID of the plan to execute.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("start_plan", {"planId": plan_id})
+
+    async def stop_plan(self) -> YarboCommandResult:
+        """Stop the currently running plan.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("stop_plan", {})
+
+    async def pause_plan(self) -> YarboCommandResult:
+        """Pause the currently running plan.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("pause_plan", {})
+
+    async def resume_plan(self) -> YarboCommandResult:
+        """Resume a paused plan.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("resume_plan", {})
+
+    async def return_to_dock(self) -> YarboCommandResult:
+        """Send the robot back to its charging dock (``cmd_recharge``).
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("cmd_recharge", {})
+
+    # ------------------------------------------------------------------
     # Raw publish (escape hatch)
     # ------------------------------------------------------------------
 
