@@ -8,8 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from yarbo.auth import YarboAuth
-from yarbo.exceptions import YarboAuthError, YarboTokenExpiredError
-
+from yarbo.exceptions import YarboAuthError
 
 MOCK_LOGIN_RESPONSE = {
     "success": True,

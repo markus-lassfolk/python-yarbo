@@ -4,14 +4,12 @@ pytest fixtures and mock MQTT broker for python-yarbo tests.
 
 from __future__ import annotations
 
-import asyncio
 import json
-import zlib
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
+import zlib
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Codec helpers (used in multiple test modules)
@@ -47,7 +45,42 @@ def sample_broker() -> str:
 
 @pytest.fixture
 def sample_telemetry_dict() -> dict[str, Any]:
-    """Realistic DeviceMSG telemetry payload (from live capture)."""
+    """
+    Realistic nested DeviceMSG telemetry payload (from live capture, 2026-02-24).
+
+    Matches the confirmed live schema in MQTT_PROTOCOL.md.
+    """
+    return {
+        "BatteryMSG": {
+            "capacity": 83,
+            "status": 3,
+            "temp_err": 0,
+            "timestamp": 1771943280.057,
+        },
+        "StateMSG": {
+            "working_state": 1,
+            "charging_status": 2,
+            "error_code": 0,
+            "machine_controller": 1,
+        },
+        "RTKMSG": {
+            "heading": 339.4576,
+            "status": "4",
+            "timestamp": 1771943280.131,
+        },
+        "CombinedOdom": {
+            "x": 1.268,
+            "y": -0.338,
+            "phi": -0.359,
+        },
+        "led": 69666,
+        "timestamp": 1771943280.0,
+    }
+
+
+@pytest.fixture
+def sample_telemetry_dict_flat() -> dict[str, Any]:
+    """Legacy flat telemetry payload for backward-compat tests."""
     return {
         "sn": "24400102L8HO5227",
         "state": "idle",
@@ -78,10 +111,11 @@ def sample_light_on() -> dict[str, int]:
 @pytest.fixture
 def sample_light_off() -> dict[str, int]:
     """All-off light payload."""
-    return {k: 0 for k in [
+    keys = [
         "led_head", "led_left_w", "led_right_w",
         "body_left_r", "body_right_r", "tail_left_r", "tail_right_r",
-    ]}
+    ]
+    return dict.fromkeys(keys, 0)
 
 
 @pytest.fixture
@@ -92,11 +126,12 @@ def mock_paho_client():
     Sets up ``on_connect`` / ``on_message`` callbacks and auto-fires
     the connect callback when ``connect()`` is called.
     """
-    with patch("paho.mqtt.client.Client") as MockClient:
+    with patch("paho.mqtt.client.Client") as MockClient:  # noqa: N806
         mock_instance = MagicMock()
         MockClient.return_value = mock_instance
 
-        # Simulate successful connection
+        # Simulate successful connection — pass rc=0 matching paho v2 signature
+        # (client, userdata, flags, reason_code, props)
         def connect_side_effect(host, port, **kwargs):
             # Fire the on_connect callback synchronously in test
             if mock_instance.on_connect:

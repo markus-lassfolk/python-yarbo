@@ -11,8 +11,8 @@ Reference: Blutter ASM analysis of the Flutter app's MqttPublish class.
 from __future__ import annotations
 
 import json
-import zlib
 from typing import Any
+import zlib
 
 
 def encode(payload: dict[str, Any]) -> bytes:
@@ -40,8 +40,12 @@ def decode(data: bytes) -> dict[str, Any]:
     """
     Decode a zlib-compressed JSON byte string to a Python dict.
 
-    Falls back to plain JSON if decompression fails (for compatibility
-    with any firmware that might not compress).
+    Falls back to plain JSON if decompression fails.
+
+    .. note:: ``heart_beat`` exception
+        The ``heart_beat`` topic delivers plain (uncompressed) JSON, e.g.
+        ``{"working_state": 0}``. The zlib fallback path handles this
+        transparently — no special case is needed in callers.
 
     Args:
         data: Raw bytes received from the MQTT broker.
