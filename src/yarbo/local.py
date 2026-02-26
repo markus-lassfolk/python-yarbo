@@ -44,6 +44,7 @@ from .const import (
     TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
     TOPIC_LEAF_DEVICE_MSG,
+    TOPIC_LEAF_PLAN_FEEDBACK,
 )
 from .exceptions import YarboNotControllerError, YarboTimeoutError
 from .models import YarboCommandResult, YarboLightState, YarboTelemetry
@@ -325,9 +326,19 @@ class YarboLocalClient:
                 if telemetry.battery and telemetry.battery < 10:
                     break
         """
+        # Cache plan_feedback data to merge into each DeviceMSG telemetry object
+        _plan_payload: dict[str, Any] = {}
         async for envelope in self._transport.telemetry_stream():
-            if envelope.is_telemetry:
-                yield envelope.to_telemetry()
+            if envelope.kind == TOPIC_LEAF_PLAN_FEEDBACK:
+                _plan_payload = envelope.payload
+            elif envelope.is_telemetry:
+                t = envelope.to_telemetry()
+                if _plan_payload:
+                    t.plan_id = _plan_payload.get("planId")
+                    t.plan_state = _plan_payload.get("state")
+                    t.area_covered = _plan_payload.get("areaCovered")
+                    t.duration = _plan_payload.get("duration")
+                yield t
 
     # ------------------------------------------------------------------
     # Internal helper: publish + wait for data_feedback
