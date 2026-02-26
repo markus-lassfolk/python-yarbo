@@ -207,7 +207,7 @@ async def _sniff_sn(host: str, port: int, timeout: float) -> str:
             return ""
         finally:
             client.disconnect()
-            client.loop_stop()
+            await loop.run_in_executor(None, client.loop_stop)
 
     except ImportError:
         logger.debug("paho-mqtt not installed — cannot sniff SN")
