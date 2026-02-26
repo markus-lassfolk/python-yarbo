@@ -1,4 +1,5 @@
 """GlitchTip/Sentry error reporting for python-yarbo."""
+
 import logging
 
 logger = logging.getLogger(__name__)
