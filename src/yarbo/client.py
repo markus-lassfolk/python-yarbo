@@ -150,6 +150,11 @@ class YarboClient:
         """Robot serial number (read-only)."""
         return self._local.serial_number
 
+    @property
+    def controller_acquired(self) -> bool:
+        """True if the controller role has been acquired on the local MQTT broker."""
+        return self._local.controller_acquired
+
     # ------------------------------------------------------------------
     # Local commands (delegated to YarboLocalClient)
     # ------------------------------------------------------------------
