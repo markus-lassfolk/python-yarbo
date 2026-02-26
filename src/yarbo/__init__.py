@@ -79,6 +79,7 @@ from .models import (
 __all__ = [
     # Discovery
     "DiscoveredRobot",
+    # Models
     "TelemetryEnvelope",
     # Helpers
     "Topic",
