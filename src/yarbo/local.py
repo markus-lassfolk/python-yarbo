@@ -44,7 +44,7 @@ from .const import (
     TOPIC_LEAF_DATA_FEEDBACK,
     TOPIC_LEAF_DEVICE_MSG,
 )
-from .exceptions import YarboNotControllerError
+from .exceptions import YarboNotControllerError, YarboTimeoutError
 from .models import YarboCommandResult, YarboLightState, YarboTelemetry
 from .mqtt import MqttTransport
 
@@ -153,15 +153,22 @@ class YarboLocalClient:
         handshake (non-zero ``state``), raises :exc:`~yarbo.exceptions.YarboNotControllerError`.
 
         Returns:
-            :class:`~yarbo.models.YarboCommandResult` on success, ``None`` on timeout.
+            :class:`~yarbo.models.YarboCommandResult` on success.
 
         Raises:
             YarboNotControllerError: If the robot explicitly rejects the handshake.
+            YarboTimeoutError:       If no acknowledgement is received within the
+                                     command timeout (controller flag stays ``False``).
         """
+        # Pre-register the reply queue BEFORE publishing to eliminate the
+        # publish/subscribe race (response could arrive before we start waiting).
+        wait_queue = self._transport.create_wait_queue()
         await self._transport.publish("get_controller", {})
         msg = await self._transport.wait_for_message(
             timeout=DEFAULT_CMD_TIMEOUT,
             feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="get_controller",
+            _queue=wait_queue,
         )
         if msg:
             result = YarboCommandResult.from_dict(msg)
@@ -173,10 +180,11 @@ class YarboLocalClient:
                 )
             self._controller_acquired = True
             return result
-        # Timeout — assume success for backward compatibility with firmware
-        # that doesn't always send data_feedback for get_controller
-        self._controller_acquired = True
-        return None
+        # Timeout — firmware that doesn't send data_feedback for get_controller.
+        # Do NOT mark as acquired; raise so the caller can decide whether to retry.
+        raise YarboTimeoutError(
+            "Timed out waiting for get_controller acknowledgement from robot."
+        )
 
     async def _ensure_controller(self) -> None:
         """Send ``get_controller`` if not already acquired and auto mode is on."""
