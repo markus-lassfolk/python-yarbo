@@ -33,7 +33,6 @@ References:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -42,7 +41,6 @@ from .const import (
     DEFAULT_CMD_TIMEOUT,
     LOCAL_BROKER_DEFAULT,
     LOCAL_PORT,
-    TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
     TOPIC_LEAF_DEVICE_MSG,
 )

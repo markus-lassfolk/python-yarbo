@@ -10,7 +10,7 @@ import pytest
 
 from yarbo.exceptions import YarboNotControllerError, YarboTimeoutError
 from yarbo.local import YarboLocalClient
-from yarbo.models import TelemetryEnvelope, YarboLightState
+from yarbo.models import TelemetryEnvelope, YarboLightState, YarboTelemetry
 
 
 def _encode(payload: dict) -> bytes:
@@ -185,6 +185,23 @@ class TestYarboLocalClientController:
 
 @pytest.mark.asyncio
 class TestYarboLocalClientTelemetry:
+    async def test_get_status_derives_sn_from_topic_when_missing_from_payload(
+        self, mock_transport
+    ):
+        """get_status passes envelope topic to from_dict so sn is derived when absent."""
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={
+                "topic": "snowbot/SN42/device/DeviceMSG",
+                "payload": {"BatteryMSG": {"capacity": 50}},
+            }
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        result = await client.get_status(timeout=1.0)
+        assert result is not None
+        assert isinstance(result, YarboTelemetry)
+        assert result.sn == "SN42"
+
     async def test_watch_telemetry_yields(self, mock_transport):
         client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
         await client.connect()

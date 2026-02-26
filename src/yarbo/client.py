@@ -142,8 +142,17 @@ class YarboClient:
     # Local commands (delegated to YarboLocalClient)
     # ------------------------------------------------------------------
 
-    async def get_controller(self) -> YarboCommandResult | None:
-        """Acquire controller role. Called automatically before most commands."""
+    async def get_controller(self) -> YarboCommandResult:
+        """
+        Acquire controller role. Called automatically before most commands.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboNotControllerError: If the robot rejects the handshake.
+            YarboTimeoutError: If no acknowledgement is received in time.
+        """
         return await self._local.get_controller()
 
     async def get_status(self, timeout: float = 5.0) -> YarboTelemetry | None:

@@ -13,7 +13,6 @@ References:
 
 from __future__ import annotations
 
-import contextlib
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -521,10 +520,14 @@ class YarboCommandResult:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> YarboCommandResult:
-        state_val = d.get("state") or 0
-        try:
-            state = int(state_val)
-        except (ValueError, TypeError):
+        if "state" in d:
+            state_val = d["state"]
+            try:
+                state = int(state_val)
+            except (ValueError, TypeError):
+                # Unparseable state: treat as failure sentinel; raw value in raw.
+                state = -1
+        else:
             state = 0
         return cls(
             topic=d.get("topic", ""),
