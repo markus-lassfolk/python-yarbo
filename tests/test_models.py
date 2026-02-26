@@ -13,6 +13,7 @@ from yarbo.models import (
     YarboRobot,
     YarboSchedule,
     YarboTelemetry,
+    _parse_gngga,
 )
 
 
@@ -384,3 +385,88 @@ class TestYarboCommandResult:
         assert result.topic == ""
         assert result.state == 0
         assert result.success is True
+
+
+class TestParseGNGGA:
+    """Tests for _parse_gngga NMEA sentence parser (Issue #18)."""
+
+    # Real GNGGA samples
+    SAMPLE_NORTH_EAST = "$GNGGA,123519,4807.038,N,01131.324,E,1,08,0.9,545.4,M,46.9,M,,*42"
+    SAMPLE_SOUTH_WEST = "$GNGGA,194530,3352.905,S,07047.610,W,4,12,0.6,32.1,M,-17.0,M,,*52"
+    SAMPLE_RTK_FIXED = "$GNGGA,095821,5321.574,N,00617.812,W,4,14,0.5,12.3,M,50.1,M,,*7A"
+    SAMPLE_NO_FIX = "$GNGGA,000000,,,,,0,00,99.9,0.0,M,0.0,M,,*48"
+    SAMPLE_NOT_GNGGA = "$GPGSV,3,1,12,..."
+
+    def test_north_east_coordinates(self):
+        lat, lon, alt, fix = _parse_gngga(self.SAMPLE_NORTH_EAST)
+        assert lat is not None
+        assert lon is not None
+        assert lat == pytest.approx(48.0 + 7.038 / 60, rel=1e-5)
+        assert lon == pytest.approx(11.0 + 31.324 / 60, rel=1e-5)
+        assert alt == pytest.approx(545.4, rel=1e-5)
+        assert fix == 1
+
+    def test_south_west_coordinates(self):
+        lat, lon, alt, fix = _parse_gngga(self.SAMPLE_SOUTH_WEST)
+        assert lat is not None and lat < 0  # South
+        assert lon is not None and lon < 0  # West
+        assert fix == 4  # RTK fixed
+
+    def test_rtk_fixed_fix_quality(self):
+        lat, lon, alt, fix = _parse_gngga(self.SAMPLE_RTK_FIXED)
+        assert fix == 4
+        assert lat is not None
+        assert lon is not None
+
+    def test_no_fix_returns_none(self):
+        lat, lon, alt, fix = _parse_gngga(self.SAMPLE_NO_FIX)
+        assert fix == 0
+        assert lat is None
+        assert lon is None
+
+    def test_non_gngga_sentence(self):
+        lat, lon, alt, fix = _parse_gngga(self.SAMPLE_NOT_GNGGA)
+        assert lat is None
+        assert lon is None
+        assert fix == 0
+
+    def test_empty_string(self):
+        lat, lon, alt, fix = _parse_gngga("")
+        assert lat is None
+        assert fix == 0
+
+
+class TestYarboTelemetryGPS:
+    """Tests for GPS fields in YarboTelemetry parsed from DeviceMSG (Issue #18)."""
+
+    GNGGA = "$GNGGA,123519,4807.038,N,01131.324,E,1,08,0.9,545.4,M,46.9,M,,*42"
+
+    def test_gps_fields_parsed_from_device_msg(self):
+        d = {
+            "rtk_base_data": {
+                "rover": {"gngga": self.GNGGA}
+            }
+        }
+        t = YarboTelemetry.from_dict(d)
+        assert t.latitude is not None
+        assert t.longitude is not None
+        assert t.altitude == pytest.approx(545.4, rel=1e-5)
+        assert t.fix_quality == 1
+
+    def test_gps_none_when_no_rtk_data(self):
+        t = YarboTelemetry.from_dict({"sn": "X1"})
+        assert t.latitude is None
+        assert t.longitude is None
+        assert t.altitude is None
+        assert t.fix_quality == 0
+
+    def test_gps_none_when_no_fix(self):
+        d = {
+            "rtk_base_data": {
+                "rover": {"gngga": "$GNGGA,000000,,,,,0,00,99.9,0.0,M,0.0,M,,*48"}
+            }
+        }
+        t = YarboTelemetry.from_dict(d)
+        assert t.latitude is None
+        assert t.longitude is None
+        assert t.fix_quality == 0
