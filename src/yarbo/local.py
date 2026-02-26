@@ -33,6 +33,7 @@ References:
 from __future__ import annotations
 
 import asyncio
+from datetime import UTC, datetime
 import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -158,6 +159,32 @@ class YarboLocalClient:
     def controller_acquired(self) -> bool:
         """True if the controller handshake has been successfully completed."""
         return self._controller_acquired
+
+    @property
+    def last_heartbeat(self) -> datetime | None:
+        """UTC datetime of the last received ``heart_beat`` message, or ``None``."""
+        ts = self._transport.last_heartbeat
+        if ts is None:
+            return None
+        return datetime.fromtimestamp(ts, tz=UTC)
+
+    def is_healthy(self, max_age_seconds: float = 60.0) -> bool:
+        """Return ``True`` if a heartbeat was received within *max_age_seconds*.
+
+        Args:
+            max_age_seconds: Maximum acceptable age of the last heartbeat in
+                             seconds (default 60.0).
+
+        Returns:
+            ``True`` when the transport is connected, a heartbeat has been
+            received, and the most recent one arrived within *max_age_seconds*.
+        """
+        if not self.is_connected:
+            return False
+        ts = self._transport.last_heartbeat
+        if ts is None:
+            return False
+        return (time.time() - ts) <= max_age_seconds
 
     # ------------------------------------------------------------------
     # Controller handshake
@@ -553,6 +580,175 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         return await self._publish_and_wait("del_plan", {"planId": plan_id})
+
+    # ------------------------------------------------------------------
+    # Manual drive
+    # ------------------------------------------------------------------
+
+    async def start_manual_drive(self) -> None:
+        """Enter manual drive mode (``set_working_state`` state=manual).
+
+        Fires and forgets — no response is expected for this command.
+        Use :meth:`set_velocity`, :meth:`set_roller`, and :meth:`set_chute`
+        to control the robot while in manual mode, then call
+        :meth:`stop_manual_drive` when done.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_working_state", {"state": "manual"})
+
+    async def set_velocity(self, linear: float, angular: float = 0.0) -> None:
+        """Send a velocity command to the robot.
+
+        Args:
+            linear:  Linear velocity in m/s (forward positive).
+            angular: Angular velocity in rad/s (counter-clockwise positive).
+                     Defaults to 0.0 (straight).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_vel", {"vel": linear, "rev": angular})
+
+    async def set_roller(self, speed: int) -> None:
+        """Set the roller speed (leaf-blower/snow-blower models only).
+
+        Args:
+            speed: Roller speed in RPM (0-2000).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_roller", {"vel": speed})
+
+    async def stop_manual_drive(
+        self, hard: bool = False, emergency: bool = False
+    ) -> YarboCommandResult:
+        """Exit manual drive mode and stop the robot.
+
+        Three stop modes are supported (in increasing priority):
+
+        * ``stop_manual_drive()``              → ``dstop``   (graceful stop)
+        * ``stop_manual_drive(hard=True)``     → ``dstopp``  (hard immediate stop)
+        * ``stop_manual_drive(emergency=True)``→ ``emergency_stop_active``
+
+        Args:
+            hard:      Send an immediate hard stop (``dstopp``) instead of the
+                       default graceful stop (``dstop``).
+            emergency: Send an emergency stop (``emergency_stop_active``),
+                       overrides *hard*.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` from the robot.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        cmd = "emergency_stop_active" if emergency else ("dstopp" if hard else "dstop")
+        return await self._publish_and_wait(cmd, {})
+
+    # ------------------------------------------------------------------
+    # Global params
+    # ------------------------------------------------------------------
+
+    async def get_global_params(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> dict[str, Any]:
+        """Fetch all global robot parameters (``read_global_params``).
+
+        Args:
+            timeout: Maximum wait time in seconds (default 5.0).
+
+        Returns:
+            Dict of global parameters as returned by the robot.
+            Returns an empty dict on timeout.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("read_global_params", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="read_global_params",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return {}
+        return dict(msg.get("data", {}) or {})
+
+    async def set_global_params(self, params: dict[str, Any]) -> YarboCommandResult:
+        """Save global robot parameters (``cmd_save_para``).
+
+        Args:
+            params: Dict of parameter key/value pairs to save.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("cmd_save_para", params)
+
+    # ------------------------------------------------------------------
+    # Map retrieval
+    # ------------------------------------------------------------------
+
+    async def get_map(self, timeout: float = 10.0) -> dict[str, Any]:
+        """Retrieve the robot's current map data (``get_map``).
+
+        Args:
+            timeout: Maximum wait time in seconds (default 10.0).
+
+        Returns:
+            Map data dict as returned by the robot.
+            Returns an empty dict on timeout.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("get_map", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="get_map",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return {}
+        return dict(msg.get("data", {}) or {})
+
+    # ------------------------------------------------------------------
+    # Plan creation
+    # ------------------------------------------------------------------
+
+    async def create_plan(
+        self,
+        name: str,
+        area_ids: list[int],
+        enable_self_order: bool = False,
+    ) -> YarboCommandResult:
+        """Create a new work plan on the robot (``save_plan``).
+
+        Args:
+            name:              Display name for the plan.
+            area_ids:          List of area IDs to include.
+            enable_self_order: Whether the robot should self-order the areas.
+                               Defaults to ``False``.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        payload: dict[str, Any] = {
+            "name": name,
+            "areaIds": area_ids,
+            "enable_self_order": enable_self_order,
+        }
+        return await self._publish_and_wait("save_plan", payload)
 
     # ------------------------------------------------------------------
     # Raw publish (escape hatch)

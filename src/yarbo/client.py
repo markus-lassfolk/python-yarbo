@@ -38,6 +38,7 @@ from .local import YarboLocalClient, _SyncYarboLocalClient
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+    from datetime import datetime
     from types import TracebackType
 
     from .models import (
@@ -241,6 +242,72 @@ class YarboClient:
     async def delete_plan(self, plan_id: str) -> YarboCommandResult:
         """Delete a plan by its ID."""
         return await self._local.delete_plan(plan_id)
+
+    async def create_plan(
+        self,
+        name: str,
+        area_ids: list[int],
+        enable_self_order: bool = False,
+    ) -> YarboCommandResult:
+        """Create a new work plan on the robot."""
+        return await self._local.create_plan(
+            name=name, area_ids=area_ids, enable_self_order=enable_self_order
+        )
+
+    # ------------------------------------------------------------------
+    # Manual drive (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def start_manual_drive(self) -> None:
+        """Enter manual drive mode."""
+        await self._local.start_manual_drive()
+
+    async def set_velocity(self, linear: float, angular: float = 0.0) -> None:
+        """Send a velocity command (linear m/s, angular rad/s)."""
+        await self._local.set_velocity(linear=linear, angular=angular)
+
+    async def set_roller(self, speed: int) -> None:
+        """Set roller speed in RPM (0-2000)."""
+        await self._local.set_roller(speed=speed)
+
+    async def stop_manual_drive(
+        self, hard: bool = False, emergency: bool = False
+    ) -> YarboCommandResult:
+        """Exit manual drive mode and stop the robot."""
+        return await self._local.stop_manual_drive(hard=hard, emergency=emergency)
+
+    # ------------------------------------------------------------------
+    # Global params (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def get_global_params(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Fetch all global robot parameters."""
+        return await self._local.get_global_params(timeout=timeout)
+
+    async def set_global_params(self, params: dict[str, Any]) -> YarboCommandResult:
+        """Save global robot parameters."""
+        return await self._local.set_global_params(params=params)
+
+    # ------------------------------------------------------------------
+    # Map retrieval (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def get_map(self, timeout: float = 10.0) -> dict[str, Any]:
+        """Retrieve the robot's current map data."""
+        return await self._local.get_map(timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Connection health (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    @property
+    def last_heartbeat(self) -> datetime | None:
+        """UTC datetime of the last received heartbeat, or ``None``."""
+        return self._local.last_heartbeat
+
+    def is_healthy(self, max_age_seconds: float = 60.0) -> bool:
+        """Return ``True`` if a heartbeat was received within *max_age_seconds*."""
+        return self._local.is_healthy(max_age_seconds=max_age_seconds)
 
     # ------------------------------------------------------------------
     # Cloud features (lazy-initialised)

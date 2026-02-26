@@ -43,6 +43,7 @@ from .const import (
     TOPIC_APP_TMPL,
     TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
+    TOPIC_LEAF_HEART_BEAT,
     Topic,
 )
 from .exceptions import YarboConnectionError, YarboTimeoutError
@@ -111,6 +112,9 @@ class MqttTransport:
         self._was_connected: bool = False
         # Callbacks invoked (on the asyncio loop) when the transport reconnects
         self._reconnect_callbacks: list[Callable[[], None]] = []
+        # Epoch timestamp of the last received heart_beat message (None = none received yet).
+        # Updated directly in _on_message (paho thread) — a float write is atomic in CPython.
+        self._last_heartbeat: float | None = None
 
     @property
     def sn(self) -> str:
@@ -121,6 +125,11 @@ class MqttTransport:
     def is_connected(self) -> bool:
         """True if the MQTT connection is established."""
         return self._connected.is_set()
+
+    @property
+    def last_heartbeat(self) -> float | None:
+        """Unix epoch timestamp of the last received ``heart_beat`` message, or ``None``."""
+        return self._last_heartbeat
 
     def add_reconnect_callback(self, callback: Callable[[], None]) -> None:
         """Register a callback to be invoked on the asyncio loop after a reconnect.
@@ -441,6 +450,9 @@ class MqttTransport:
         Pushes an envelope dict ``{"topic": str, "payload": dict}`` into
         every registered queue so that :meth:`wait_for_message` can filter
         by topic leaf and :meth:`telemetry_stream` can expose the kind.
+
+        Also tracks the timestamp of ``heart_beat`` messages for
+        :attr:`last_heartbeat`.
         """
         try:
             payload = decode(msg.payload)
@@ -449,6 +461,9 @@ class MqttTransport:
                 msg.topic,
                 str(payload)[:160],
             )
+            # Track heartbeat reception time (float write is atomic in CPython).
+            if Topic.leaf(msg.topic) == TOPIC_LEAF_HEART_BEAT:
+                self._last_heartbeat = time.time()
             if self._loop and self._message_queues:
                 for q in list(self._message_queues):
                     # Each consumer gets its own copy so that no two consumers
