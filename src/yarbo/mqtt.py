@@ -28,7 +28,7 @@ import time
 from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncIterator, Callable
 
     import paho.mqtt.client as _paho
 
@@ -43,6 +43,7 @@ from .const import (
     TOPIC_APP_TMPL,
     TOPIC_DEVICE_TMPL,
     TOPIC_LEAF_DATA_FEEDBACK,
+    TOPIC_LEAF_HEART_BEAT,
     Topic,
 )
 from .exceptions import YarboConnectionError, YarboTimeoutError
@@ -88,6 +89,8 @@ class MqttTransport:
         password: str = "",
         connect_timeout: float = DEFAULT_CONNECT_TIMEOUT,
         qos: int = 0,
+        tls: bool = False,
+        tls_ca_certs: str | None = None,
     ) -> None:
         self._broker = broker
         self._sn = sn
@@ -96,6 +99,8 @@ class MqttTransport:
         self._password = password
         self._connect_timeout = connect_timeout
         self._qos = qos
+        self._tls = tls
+        self._tls_ca_certs = tls_ca_certs
 
         # paho Client — typed via TYPE_CHECKING import to avoid hard dependency
         self._client: _paho.Client | None = None
@@ -103,6 +108,13 @@ class MqttTransport:
         self._connected = asyncio.Event()
         # Each entry is a queue of envelope dicts: {"topic": str, "payload": dict}
         self._message_queues: list[asyncio.Queue[dict[str, Any]]] = []
+        # Reconnect tracking: True after the first successful disconnect
+        self._was_connected: bool = False
+        # Callbacks invoked (on the asyncio loop) when the transport reconnects
+        self._reconnect_callbacks: list[Callable[[], None]] = []
+        # Epoch timestamp of the last received heart_beat message (None = none received yet).
+        # Updated directly in _on_message (paho thread) — a float write is atomic in CPython.
+        self._last_heartbeat: float | None = None
 
     @property
     def sn(self) -> str:
@@ -113,6 +125,21 @@ class MqttTransport:
     def is_connected(self) -> bool:
         """True if the MQTT connection is established."""
         return self._connected.is_set()
+
+    @property
+    def last_heartbeat(self) -> float | None:
+        """Unix epoch timestamp of the last received ``heart_beat`` message, or ``None``."""
+        return self._last_heartbeat
+
+    def add_reconnect_callback(self, callback: Callable[[], None]) -> None:
+        """Register a callback to be invoked on the asyncio loop after a reconnect.
+
+        A *reconnect* is any successful ``_on_connect`` that happens after the
+        transport has previously been disconnected (i.e. not the initial connect).
+        Duplicate callbacks are silently ignored.
+        """
+        if callback not in self._reconnect_callbacks:
+            self._reconnect_callbacks.append(callback)
 
     # ------------------------------------------------------------------
     # Connection lifecycle
@@ -144,6 +171,14 @@ class MqttTransport:
         )
         if self._username:
             self._client.username_pw_set(self._username, self._password)
+
+        if self._tls:
+            import ssl  # noqa: PLC0415
+
+            self._client.tls_set(
+                ca_certs=self._tls_ca_certs,
+                cert_reqs=ssl.CERT_REQUIRED if self._tls_ca_certs else ssl.CERT_NONE,
+            )
 
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
@@ -368,13 +403,19 @@ class MqttTransport:
         """
         rc = getattr(reason_code, "value", reason_code)
         if rc == 0:
-            # Subscribe to all feedback topics
+            is_reconnect = self._was_connected
+            # Always re-subscribe to all feedback topics (covers both initial connect
+            # and automatic broker reconnections initiated by paho).
             for leaf in ALL_FEEDBACK_LEAVES:
                 topic = TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=leaf)
                 client.subscribe(topic, qos=self._qos)
                 logger.debug("Subscribed: %s", topic)
             if self._loop:
                 self._loop.call_soon_threadsafe(self._connected.set)
+                if is_reconnect:
+                    logger.info("MQTT reconnected — re-subscribed (sn=%s)", self._sn)
+                    for cb in list(self._reconnect_callbacks):
+                        self._loop.call_soon_threadsafe(cb)
         else:
             logger.error("MQTT connect failed rc=%s", rc)
 
@@ -388,6 +429,7 @@ class MqttTransport:
     ) -> None:
         """paho-mqtt v2 on_disconnect callback."""
         rc = getattr(reason_code, "value", reason_code)
+        self._was_connected = True  # next _on_connect is a reconnect
         if self._loop:
             self._loop.call_soon_threadsafe(self._connected.clear)
         logger.warning("MQTT disconnected rc=%s", rc)
@@ -414,6 +456,9 @@ class MqttTransport:
         Pushes an envelope dict ``{"topic": str, "payload": dict}`` into
         every registered queue so that :meth:`wait_for_message` can filter
         by topic leaf and :meth:`telemetry_stream` can expose the kind.
+
+        Also tracks the timestamp of ``heart_beat`` messages for
+        :attr:`last_heartbeat`.
         """
         try:
             payload = decode(msg.payload)
@@ -422,6 +467,9 @@ class MqttTransport:
                 msg.topic,
                 str(payload)[:160],
             )
+            # Track heartbeat reception time (float write is atomic in CPython).
+            if Topic.leaf(msg.topic) == TOPIC_LEAF_HEART_BEAT:
+                self._last_heartbeat = time.time()
             if self._loop and self._message_queues:
                 for q in list(self._message_queues):
                     # Each consumer gets its own copy so that no two consumers

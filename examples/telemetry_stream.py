@@ -31,7 +31,7 @@ async def main(broker: str, sn: str, count: int) -> None:
             print(
                 f"{received:>4}  "
                 f"{str(telemetry.battery) + '%':>8}  "
-                f"{str(telemetry.state):>12}  "
+                f"{telemetry.state!s:>12}  "
                 f"{str(telemetry.heading) + '°':>8}  "
                 f"{str(telemetry.speed) + 'm/s':>8}"
             )

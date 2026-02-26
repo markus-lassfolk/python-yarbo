@@ -52,6 +52,11 @@ class TestYarboClientLifecycle:
         mock_local_client.connect.assert_called_once()
         mock_local_client.disconnect.assert_called_once()
 
+    async def test_serial_number(self, mock_local_client):
+        mock_local_client.serial_number = "24400102L8HO5227"
+        client = YarboClient(broker="192.168.1.24", sn="24400102L8HO5227")
+        assert client.serial_number == "24400102L8HO5227"
+
 
 @pytest.mark.asyncio
 class TestYarboClientDelegation:

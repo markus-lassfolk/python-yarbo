@@ -38,9 +38,16 @@ from .local import YarboLocalClient, _SyncYarboLocalClient
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
+    from datetime import datetime
     from types import TracebackType
 
-    from .models import YarboCommandResult, YarboLightState, YarboTelemetry
+    from .models import (
+        YarboCommandResult,
+        YarboLightState,
+        YarboPlan,
+        YarboSchedule,
+        YarboTelemetry,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +145,11 @@ class YarboClient:
         """True if the local MQTT connection is active."""
         return self._local.is_connected
 
+    @property
+    def serial_number(self) -> str:
+        """Robot serial number (read-only)."""
+        return self._local.serial_number
+
     # ------------------------------------------------------------------
     # Local commands (delegated to YarboLocalClient)
     # ------------------------------------------------------------------
@@ -187,6 +199,124 @@ class YarboClient:
     async def publish_raw(self, cmd: str, payload: dict[str, Any]) -> None:
         """Publish an arbitrary MQTT command to the robot."""
         await self._local.publish_raw(cmd, payload)
+
+    # ------------------------------------------------------------------
+    # Plan management (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def start_plan(self, plan_id: str) -> YarboCommandResult:
+        """Start the plan identified by *plan_id*."""
+        return await self._local.start_plan(plan_id)
+
+    async def stop_plan(self) -> YarboCommandResult:
+        """Stop the currently running plan."""
+        return await self._local.stop_plan()
+
+    async def pause_plan(self) -> YarboCommandResult:
+        """Pause the currently running plan."""
+        return await self._local.pause_plan()
+
+    async def resume_plan(self) -> YarboCommandResult:
+        """Resume a paused plan."""
+        return await self._local.resume_plan()
+
+    async def return_to_dock(self) -> YarboCommandResult:
+        """Send the robot back to its charging dock."""
+        return await self._local.return_to_dock()
+
+    # ------------------------------------------------------------------
+    # Schedule management (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def list_schedules(self, timeout: float = 5.0) -> list[YarboSchedule]:
+        """Fetch the list of saved schedules from the robot."""
+        return await self._local.list_schedules(timeout=timeout)
+
+    async def set_schedule(self, schedule: YarboSchedule) -> YarboCommandResult:
+        """Save or update a schedule on the robot."""
+        return await self._local.set_schedule(schedule)
+
+    async def delete_schedule(self, schedule_id: str) -> YarboCommandResult:
+        """Delete a schedule by its ID."""
+        return await self._local.delete_schedule(schedule_id)
+
+    # ------------------------------------------------------------------
+    # Plan CRUD (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def list_plans(self, timeout: float = 5.0) -> list[YarboPlan]:
+        """Fetch the list of saved plans from the robot."""
+        return await self._local.list_plans(timeout=timeout)
+
+    async def delete_plan(self, plan_id: str) -> YarboCommandResult:
+        """Delete a plan by its ID."""
+        return await self._local.delete_plan(plan_id)
+
+    async def create_plan(
+        self,
+        name: str,
+        area_ids: list[int],
+        enable_self_order: bool = False,
+    ) -> YarboCommandResult:
+        """Create a new work plan on the robot."""
+        return await self._local.create_plan(
+            name=name, area_ids=area_ids, enable_self_order=enable_self_order
+        )
+
+    # ------------------------------------------------------------------
+    # Manual drive (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def start_manual_drive(self) -> None:
+        """Enter manual drive mode."""
+        await self._local.start_manual_drive()
+
+    async def set_velocity(self, linear: float, angular: float = 0.0) -> None:
+        """Send a velocity command (linear m/s, angular rad/s)."""
+        await self._local.set_velocity(linear=linear, angular=angular)
+
+    async def set_roller(self, speed: int) -> None:
+        """Set roller speed in RPM (0-2000)."""
+        await self._local.set_roller(speed=speed)
+
+    async def stop_manual_drive(
+        self, hard: bool = False, emergency: bool = False
+    ) -> YarboCommandResult:
+        """Exit manual drive mode and stop the robot."""
+        return await self._local.stop_manual_drive(hard=hard, emergency=emergency)
+
+    # ------------------------------------------------------------------
+    # Global params (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def get_global_params(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Fetch all global robot parameters."""
+        return await self._local.get_global_params(timeout=timeout)
+
+    async def set_global_params(self, params: dict[str, Any]) -> YarboCommandResult:
+        """Save global robot parameters."""
+        return await self._local.set_global_params(params=params)
+
+    # ------------------------------------------------------------------
+    # Map retrieval (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def get_map(self, timeout: float = 10.0) -> dict[str, Any]:
+        """Retrieve the robot's current map data."""
+        return await self._local.get_map(timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Connection health (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    @property
+    def last_heartbeat(self) -> datetime | None:
+        """UTC datetime of the last received heartbeat, or ``None``."""
+        return self._local.last_heartbeat
+
+    def is_healthy(self, max_age_seconds: float = 60.0) -> bool:
+        """Return ``True`` if a heartbeat was received within *max_age_seconds*."""
+        return self._local.is_healthy(max_age_seconds=max_age_seconds)
 
     # ------------------------------------------------------------------
     # Cloud features (lazy-initialised)
