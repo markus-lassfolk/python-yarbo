@@ -66,6 +66,7 @@ from .exceptions import (
 )
 from .local import YarboLocalClient
 from .models import (
+    HeadType,
     TelemetryEnvelope,
     YarboCommandResult,
     YarboLightState,
@@ -80,6 +81,7 @@ __all__ = [
     # Discovery
     "DiscoveredRobot",
     # Models
+    "HeadType",
     "TelemetryEnvelope",
     # Helpers
     "Topic",

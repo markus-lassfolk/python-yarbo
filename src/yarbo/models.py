@@ -13,8 +13,39 @@ References:
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Head type enum
+# ---------------------------------------------------------------------------
+
+
+class HeadType(enum.IntEnum):
+    """Attachment head type as reported in ``HeadMsg.head_type``."""
+
+    Snow = 0
+    """Snow blower head."""
+
+    Mower = 1
+    """Standard mower head."""
+
+    MowerPro = 2
+    """Pro mower head."""
+
+    Leaf = 3
+    """Leaf blower head."""
+
+    SAM = 4
+    """SAM head."""
+
+    Trimmer = 5
+    """Trimmer head."""
+
+    NoHead = 6
+    """No head attached."""
+
 
 # ---------------------------------------------------------------------------
 # Lights
@@ -210,8 +241,25 @@ class YarboTelemetry:
         ``from_dict`` coerces it to ``int`` automatically.
     """
 
+    head_type: int | None = None
+    """Attachment head type integer. See :class:`HeadType` enum. Source: ``HeadMsg.head_type``."""
+
     raw: dict[str, Any] = field(default_factory=dict)
     """Complete raw DeviceMSG dict."""
+
+    @property
+    def head_name(self) -> str:
+        """Human-readable head type name derived from :attr:`head_type`.
+
+        Returns ``"Unknown"`` when ``head_type`` is ``None``, or
+        ``"Unknown(<value>)"`` for unrecognised integers.
+        """
+        if self.head_type is None:
+            return "Unknown"
+        try:
+            return HeadType(self.head_type).name
+        except ValueError:
+            return f"Unknown({self.head_type})"
 
     @classmethod
     def from_dict(cls, d: dict[str, Any], topic: str | None = None) -> YarboTelemetry:
@@ -232,6 +280,7 @@ class YarboTelemetry:
         state_msg: dict[str, Any] = d.get("StateMSG", {}) or {}
         rtk_msg: dict[str, Any] = d.get("RTKMSG", {}) or {}
         odom: dict[str, Any] = d.get("CombinedOdom", {}) or {}
+        head_msg: dict[str, Any] = d.get("HeadMsg", {}) or {}
 
         # Battery: nested first, flat fallback
         battery: int | None
@@ -295,6 +344,7 @@ class YarboTelemetry:
             heading=heading,
             speed=d.get("speed"),
             led=led,
+            head_type=head_msg.get("head_type") if head_msg else None,
             raw=d,
         )
 
