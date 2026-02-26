@@ -40,7 +40,7 @@ if TYPE_CHECKING:
     from collections.abc import AsyncIterator
     from types import TracebackType
 
-    from .models import YarboCommandResult, YarboLightState, YarboSchedule, YarboTelemetry
+    from .models import YarboCommandResult, YarboLightState, YarboPlan, YarboSchedule, YarboTelemetry
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +223,18 @@ class YarboClient:
     async def delete_schedule(self, schedule_id: str) -> YarboCommandResult:
         """Delete a schedule by its ID."""
         return await self._local.delete_schedule(schedule_id)
+
+    # ------------------------------------------------------------------
+    # Plan CRUD (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def list_plans(self, timeout: float = 5.0) -> list[YarboPlan]:
+        """Fetch the list of saved plans from the robot."""
+        return await self._local.list_plans(timeout=timeout)
+
+    async def delete_plan(self, plan_id: str) -> YarboCommandResult:
+        """Delete a plan by its ID."""
+        return await self._local.delete_plan(plan_id)
 
     # ------------------------------------------------------------------
     # Cloud features (lazy-initialised)

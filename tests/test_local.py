@@ -391,3 +391,49 @@ class TestYarboLocalClientScheduleManagement:
         published = mock_transport.publish.call_args_list
         payload = next(c[0][1] for c in published if c[0][0] == "del_schedule")
         assert payload["scheduleId"] == "sched-id-1"
+
+
+@pytest.mark.asyncio
+class TestYarboLocalClientPlanCRUD:
+    """Tests for Plan CRUD API (Issue #15)."""
+
+    async def test_list_plans_empty_on_timeout(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(return_value=None)
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        result = await client.list_plans(timeout=0.1)
+        assert result == []
+
+    async def test_list_plans_returns_plan_objects(self, mock_transport):
+        plans_data = [
+            {"planId": "p1", "planName": "Front Yard"},
+            {"planId": "p2", "planName": "Back Yard"},
+        ]
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={
+                "topic": "read_all_plan",
+                "state": 0,
+                "data": {"planList": plans_data},
+            }
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        result = await client.list_plans()
+        assert len(result) == 2
+        from yarbo.models import YarboPlan
+        assert isinstance(result[0], YarboPlan)
+        assert result[0].plan_id == "p1"
+        assert result[1].plan_name == "Back Yard"
+
+    async def test_delete_plan(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "del_plan", "state": 0, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.delete_plan("plan-id-1")
+        assert result.success is True
+        published = mock_transport.publish.call_args_list
+        payload = next(c[0][1] for c in published if c[0][0] == "del_plan")
+        assert payload["planId"] == "plan-id-1"

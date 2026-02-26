@@ -47,7 +47,7 @@ from .const import (
     TOPIC_LEAF_PLAN_FEEDBACK,
 )
 from .exceptions import YarboNotControllerError, YarboTimeoutError
-from .models import YarboCommandResult, YarboLightState, YarboSchedule, YarboTelemetry
+from .models import YarboCommandResult, YarboLightState, YarboPlan, YarboSchedule, YarboTelemetry
 from .mqtt import MqttTransport
 
 if TYPE_CHECKING:
@@ -504,6 +504,55 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         return await self._publish_and_wait("del_schedule", {"scheduleId": schedule_id})
+
+    # ------------------------------------------------------------------
+    # Plan CRUD
+    # ------------------------------------------------------------------
+
+    async def list_plans(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> list[YarboPlan]:
+        """Fetch the list of saved plans from the robot.
+
+        Sends ``read_all_plan`` and waits for the ``data_feedback`` response.
+
+        Args:
+            timeout: Maximum wait time in seconds (default 5.0).
+
+        Returns:
+            List of :class:`~yarbo.models.YarboPlan` objects.
+            Returns an empty list on timeout.
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("read_all_plan", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="read_all_plan",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return []
+        data: dict[str, Any] = msg.get("data", {}) or {}
+        plans_raw: list[Any] = data.get("planList", data.get("plans", []))
+        return [YarboPlan.from_dict(p) for p in plans_raw]
+
+    async def delete_plan(self, plan_id: str) -> YarboCommandResult:
+        """Delete a plan by its ID.
+
+        Args:
+            plan_id: UUID of the plan to delete.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("del_plan", {"planId": plan_id})
 
     # ------------------------------------------------------------------
     # Raw publish (escape hatch)
