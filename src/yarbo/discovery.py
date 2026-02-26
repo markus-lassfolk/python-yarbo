@@ -3,29 +3,35 @@ yarbo.discovery — Auto-discovery of Yarbo robots on the local network.
 
 Attempts to discover Yarbo EMQX brokers by:
 1. MQTT sniffing — connecting to a known/guessed broker and listening for
-   ``snowbot/+/device/data_feedback`` messages.
+   ``snowbot/+/device/DeviceMSG`` or ``snowbot/+/device/data_feedback`` messages.
 2. Network scan — probing port 1883 on the local subnet.
 
-Local broker default: 192.168.1.24:1883 (observed in production).
+Known local broker addresses observed in production:
+- ``192.168.1.24``  — confirmed in live HaLow captures
+- ``192.168.1.55``  — also confirmed in live HaLow captures
 
 Reference:
     yarbo-reversing/yarbo/mqtt.py — MQTT_BROKER constant
     yarbo-reversing/scripts/local_ctrl.py — DEFAULT_BROKER
+    yarbo-reversing/docs/MQTT_PROTOCOL.md — broker address notes
 """
 
 from __future__ import annotations
 
 import asyncio
-import logging
-import socket
 from dataclasses import dataclass
+import logging
 
 logger = logging.getLogger(__name__)
 
+#: Maximum simultaneous broker probes during subnet scanning.
+_SCAN_CONCURRENCY = 50
+
 #: Well-known local broker IPs observed in the wild.
 KNOWN_BROKER_IPS: list[str] = [
-    "192.168.1.24",   # confirmed from live capture
-    "192.168.8.8",    # Yarbo AP mode default gateway
+    "192.168.1.24",  # confirmed from live HaLow capture (primary)
+    "192.168.1.55",  # confirmed from live HaLow capture (secondary)
+    "192.168.8.8",  # Yarbo AP mode default gateway
     "192.168.1.1",
     "192.168.0.1",
 ]
@@ -61,8 +67,10 @@ async def discover_yarbo(
     2. If ``subnet`` is specified, scan that CIDR for open port 1883.
 
     For each reachable broker, attempt a brief MQTT connection and listen
-    for ``snowbot/+/device/data_feedback`` messages to extract the serial
-    number.
+    for ``snowbot/+/device/DeviceMSG`` messages to extract the serial number.
+
+    A semaphore caps simultaneous probes to :data:`_SCAN_CONCURRENCY` to
+    avoid overwhelming the local network on large CIDRs.
 
     Args:
         timeout: Seconds to wait per broker probe.
@@ -83,7 +91,7 @@ async def discover_yarbo(
 
     if subnet:
         try:
-            import ipaddress
+            import ipaddress  # noqa: PLC0415
 
             network = ipaddress.ip_network(subnet, strict=False)
             candidates.extend(str(host) for host in network.hosts())
@@ -94,11 +102,19 @@ async def discover_yarbo(
     seen: set[str] = set()
     unique_candidates = [c for c in candidates if not (c in seen or seen.add(c))]  # type: ignore[func-returns-value]
 
-    results: list[DiscoveredRobot] = []
-    tasks = [_probe_broker(ip, port, timeout) for ip in unique_candidates]
-    probed = await asyncio.gather(*tasks, return_exceptions=True)
+    semaphore = asyncio.Semaphore(_SCAN_CONCURRENCY)
 
-    for ip, result in zip(unique_candidates, probed):
+    async def probe_with_limit(ip: str) -> DiscoveredRobot | Exception:
+        async with semaphore:
+            try:
+                return await _probe_broker(ip, port, timeout)
+            except Exception as exc:  # noqa: BLE001
+                return exc
+
+    results: list[DiscoveredRobot] = []
+    probed = await asyncio.gather(*(probe_with_limit(ip) for ip in unique_candidates))
+
+    for ip, result in zip(unique_candidates, probed, strict=False):
         if isinstance(result, DiscoveredRobot):
             results.append(result)
         elif isinstance(result, Exception):
@@ -129,7 +145,7 @@ async def _probe_broker(
         )
         writer.close()
         await writer.wait_closed()
-    except (OSError, asyncio.TimeoutError) as exc:
+    except (TimeoutError, OSError) as exc:
         raise OSError(f"Port {host}:{port} unreachable") from exc
 
     logger.debug("TCP port open on %s:%d — trying MQTT sniff", host, port)
@@ -143,31 +159,39 @@ async def _sniff_sn(host: str, port: int, timeout: float) -> str:
     """
     Connect to the MQTT broker anonymously and listen for robot messages.
 
-    Subscribes to ``snowbot/+/device/data_feedback`` and extracts the SN
-    from the first message topic.
+    Subscribes to ``snowbot/+/device/DeviceMSG`` and ``snowbot/+/device/data_feedback``
+    and extracts the SN from the first matching message topic.
 
     Returns:
         Serial number string, or ``""`` if none arrived within timeout.
     """
-    sn_future: asyncio.Future[str] = asyncio.get_event_loop().create_future()
-
     try:
-        import paho.mqtt.client as mqtt
+        import paho.mqtt.client as mqtt  # noqa: PLC0415
 
         loop = asyncio.get_running_loop()
+        sn_future: asyncio.Future[str] = loop.create_future()
 
-        def on_connect(client: mqtt.Client, ud: object, flags: object, rc: int, props: object) -> None:
+        def on_connect(
+            client: mqtt.Client,
+            ud: object,
+            flags: object,
+            reason_code: object,
+            props: object,
+        ) -> None:
+            # Normalise reason_code to int (paho v2 passes a ReasonCode object)
+            rc = getattr(reason_code, "value", reason_code)
             if rc == 0:
+                client.subscribe("snowbot/+/device/DeviceMSG", qos=0)
                 client.subscribe("snowbot/+/device/data_feedback", qos=0)
 
         def on_message(client: mqtt.Client, ud: object, msg: mqtt.MQTTMessage) -> None:
-            # Topic: snowbot/{SN}/device/data_feedback
+            # Topic: snowbot/{SN}/device/{leaf}
             parts = msg.topic.split("/")
             if len(parts) >= 2 and not sn_future.done():
                 loop.call_soon_threadsafe(sn_future.set_result, parts[1])
 
         client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # type: ignore[attr-defined]
             client_id="",  # anonymous
         )
         client.on_connect = on_connect
@@ -177,7 +201,7 @@ async def _sniff_sn(host: str, port: int, timeout: float) -> str:
 
         try:
             return await asyncio.wait_for(sn_future, timeout=timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return ""
         finally:
             client.loop_stop()

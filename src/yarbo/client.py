@@ -30,34 +30,51 @@ Usage::
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator
-from types import TracebackType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .cloud import YarboCloudClient
 from .const import LOCAL_BROKER_DEFAULT, LOCAL_PORT
-from .exceptions import YarboConnectionError
 from .local import YarboLocalClient, _SyncYarboLocalClient
-from .models import YarboCommandResult, YarboLightState, YarboTelemetry
+
+if TYPE_CHECKING:
+    from collections.abc import AsyncIterator
+    from types import TracebackType
+
+    from .models import YarboCommandResult, YarboLightState, YarboTelemetry
 
 logger = logging.getLogger(__name__)
 
 
 class YarboClient:
     """
-    Hybrid Yarbo client — prefers local MQTT control, falls back to cloud.
+    Hybrid Yarbo client — local MQTT control + cloud REST API.
 
-    For purely local usage (no cloud account), this client is equivalent to
+    This client combines:
+
+    * **Local MQTT control** via :class:`~yarbo.local.YarboLocalClient` —
+      direct communication with the robot over the local HaLow EMQX broker.
+      This is the primary control path: fast, offline-capable, and confirmed
+      working on hardware.
+
+    * **Cloud REST API** via :class:`~yarbo.cloud.YarboCloudClient` —
+      robot management, account operations, scheduling, and notifications
+      via the Yarbo HTTPS API. Requires ``username`` / ``password``.
+
+    .. note:: **Cloud MQTT is NOT implemented.**
+        The Yarbo cloud backend also supports a Tencent TDMQ MQTT broker for
+        remote control. This library does **not** implement cloud MQTT — there
+        is no cloud MQTT fallback for control commands. All MQTT commands are
+        local-only. ``TODO: implement cloud MQTT (broker:
+        mqtt-b8rkj5da-usw-public.mqtt.tencenttdmq.com:8883)``.
+
+    For purely local usage (no cloud account) this client is equivalent to
     :class:`~yarbo.local.YarboLocalClient`.
-
-    Cloud features (``list_robots``, account management) are available when
-    ``username`` and ``password`` are provided.
 
     Args:
         broker:    Local MQTT broker IP address.
         sn:        Robot serial number.
         port:      MQTT broker port (default 1883).
-        username:  Cloud account email (optional — for cloud features only).
+        username:  Cloud account email (optional — for cloud REST features only).
         password:  Cloud account password (optional).
         rsa_key_path: Path to the RSA public key PEM (for cloud auth).
         auto_controller: Send ``get_controller`` automatically (default True).
@@ -79,18 +96,16 @@ class YarboClient:
             port=port,
             auto_controller=auto_controller,
         )
-        self._cloud_kwargs = dict(
-            username=username,
-            password=password,
-            rsa_key_path=rsa_key_path,
-        )
+        self._cloud_username = username
+        self._cloud_password = password
+        self._cloud_rsa_key_path = rsa_key_path
         self._cloud: YarboCloudClient | None = None  # lazily initialised
 
     # ------------------------------------------------------------------
     # Context manager
     # ------------------------------------------------------------------
 
-    async def __aenter__(self) -> "YarboClient":
+    async def __aenter__(self) -> YarboClient:
         await self._local.connect()
         return self
 
@@ -168,10 +183,14 @@ class YarboClient:
     # Cloud features (lazy-initialised)
     # ------------------------------------------------------------------
 
-    async def _get_cloud(self) -> "YarboCloudClient":
+    async def _get_cloud(self) -> YarboCloudClient:
         """Lazily initialise the cloud client."""
         if self._cloud is None:
-            self._cloud = YarboCloudClient(**self._cloud_kwargs)
+            self._cloud = YarboCloudClient(
+                username=self._cloud_username,
+                password=self._cloud_password,
+                rsa_key_path=self._cloud_rsa_key_path,
+            )
             await self._cloud.connect()
         return self._cloud
 
@@ -199,7 +218,7 @@ class YarboClient:
         broker: str = LOCAL_BROKER_DEFAULT,
         sn: str = "",
         port: int = LOCAL_PORT,
-    ) -> "_SyncYarboLocalClient":
+    ) -> _SyncYarboLocalClient:
         """
         Create a synchronous (blocking) client.
 

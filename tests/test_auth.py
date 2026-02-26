@@ -8,8 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from yarbo.auth import YarboAuth
-from yarbo.exceptions import YarboAuthError, YarboTokenExpiredError
-
+from yarbo.exceptions import YarboAuthError
 
 MOCK_LOGIN_RESPONSE = {
     "success": True,
@@ -55,8 +54,10 @@ class TestYarboAuthLogin:
         mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_resp.__aexit__ = AsyncMock(return_value=False)
 
-        with patch.object(auth, "_encrypt_password", return_value="encrypted_pw"), \
-             patch.object(auth, "_get_session") as mock_session_fn:
+        with (
+            patch.object(auth, "_encrypt_password", return_value="encrypted_pw"),
+            patch.object(auth, "_get_session") as mock_session_fn,
+        ):
             session = MagicMock()
             session.post = MagicMock(return_value=mock_resp)
             mock_session_fn.return_value = session
@@ -78,8 +79,10 @@ class TestYarboAuthLogin:
         mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
         mock_resp.__aexit__ = AsyncMock(return_value=False)
 
-        with patch.object(auth, "_encrypt_password", return_value="enc"), \
-             patch.object(auth, "_get_session") as mock_session_fn:
+        with (
+            patch.object(auth, "_encrypt_password", return_value="enc"),
+            patch.object(auth, "_get_session") as mock_session_fn,
+        ):
             session = MagicMock()
             session.post = MagicMock(return_value=mock_resp)
             mock_session_fn.return_value = session
@@ -136,8 +139,10 @@ class TestYarboAuthEnsureValid:
         auth.access_token = "valid_token"
         auth.expires_at = time.time() + 3600
 
-        with patch.object(auth, "login", new_callable=AsyncMock) as mock_login, \
-             patch.object(auth, "refresh", new_callable=AsyncMock) as mock_refresh:
+        with (
+            patch.object(auth, "login", new_callable=AsyncMock) as mock_login,
+            patch.object(auth, "refresh", new_callable=AsyncMock) as mock_refresh,
+        ):
             await auth.ensure_valid_token()
             mock_login.assert_not_called()
             mock_refresh.assert_not_called()
@@ -148,7 +153,9 @@ class TestYarboAuthEnsureValid:
         auth.refresh_token = "expired_refresh"
         auth.expires_at = time.time() - 1
 
-        with patch.object(auth, "refresh", side_effect=YarboAuthError("expired")), \
-             patch.object(auth, "login", new_callable=AsyncMock) as mock_login:
+        with (
+            patch.object(auth, "refresh", side_effect=YarboAuthError("expired")),
+            patch.object(auth, "login", new_callable=AsyncMock) as mock_login,
+        ):
             await auth.ensure_valid_token()
             mock_login.assert_called_once()

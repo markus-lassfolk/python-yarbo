@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 
-from yarbo.discovery import DiscoveredRobot, _probe_broker, discover_yarbo
+from yarbo.discovery import DiscoveredRobot, discover_yarbo
 
 
 class TestDiscoveredRobot:
