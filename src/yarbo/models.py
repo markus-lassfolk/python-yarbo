@@ -286,6 +286,23 @@ class YarboTelemetry:
         except ValueError:
             return f"Unknown({self.head_type})"
 
+    @property
+    def battery_capacity(self) -> int | None:
+        """Alias for :attr:`battery` (battery state of charge, 0-100 %).
+
+        Both names refer to the same underlying value; ``battery_capacity``
+        is the more descriptive form preferred in new code.
+        """
+        return self.battery
+
+    @property
+    def serial_number(self) -> str:
+        """Alias for :attr:`sn` (robot serial number).
+
+        ``serial_number`` is the more descriptive form preferred in new code.
+        """
+        return self.sn
+
     @classmethod
     def from_dict(cls, d: dict[str, Any], topic: str | None = None) -> YarboTelemetry:
         """
