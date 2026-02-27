@@ -94,7 +94,7 @@ from yarbo import discover_yarbo, YarboClient
 
 async def main():
     print("Scanning for Yarbo robots...")
-    robots = await discover_yarbo()  # scans host's local networks; or pass subnet="192.168.1.0/24"
+    robots = await discover_yarbo()  # scans host's local networks; or pass subnet="192.0.2.0/24"
 
     if not robots:
         print("No robots found")
