@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
+import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -92,6 +94,7 @@ class MqttTransport:
         qos: int = 0,
         tls: bool = False,
         tls_ca_certs: str | None = None,
+        mqtt_log_path: str | None = None,
     ) -> None:
         self._broker = broker
         self._sn = sn
@@ -102,6 +105,8 @@ class MqttTransport:
         self._qos = qos
         self._tls = tls
         self._tls_ca_certs = tls_ca_certs
+        self._mqtt_log_path: str | None = mqtt_log_path
+        self._mqtt_log_lock: threading.Lock = threading.Lock()
 
         # paho Client — typed via TYPE_CHECKING import to avoid hard dependency
         self._client: _paho.Client | None = None
@@ -468,6 +473,20 @@ class MqttTransport:
                 msg.topic,
                 str(payload)[:160],
             )
+            # Optional: log every raw MQTT message (topic + payload) for comparison with CLI output.
+            if self._mqtt_log_path:
+                with self._mqtt_log_lock:
+                    try:
+                        with open(self._mqtt_log_path, "a", encoding="utf-8") as f:
+                            f.write(
+                                json.dumps(
+                                    {"topic": getattr(msg, "topic", ""), "payload": payload},
+                                    ensure_ascii=False,
+                                )
+                                + "\n"
+                            )
+                    except OSError as e:
+                        logger.warning("Failed to write MQTT log: %s", e)
             # Track heartbeat reception time (float write is atomic in CPython).
             if Topic.leaf(msg.topic) == TOPIC_LEAF_HEART_BEAT:
                 self._last_heartbeat = time.time()
