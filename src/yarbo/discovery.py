@@ -171,20 +171,26 @@ def is_dc_endpoint(mac: str) -> bool:
     """
     Classify endpoint as DC (Data Center) from MAC address.
 
-    Locally administered MACs have bit 1 of the first octet set (see IEEE 802).
-    DC bridges are typically locally administered; Rover uses globally
-    administered (e.g. C8:FE:0F OUI, Shenzhen Bilian).
+    DC bridges use locally administered MACs (bit 1 of first octet set) or
+    specific OUI prefixes (e.g. E0:4E:7A). Rover uses globally administered
+    MACs (e.g. C8:FE:0F OUI, Shenzhen Bilian).
 
     Args:
         mac: MAC address string, e.g. ``"9e:cd:0a:69:9e:58"`` (colons optional).
 
     Returns:
-        True if locally administered (DC), False if globally administered (Rover)
+        True if DC (locally administered or known DC OUI), False if Rover
         or if MAC cannot be parsed.
     """
     try:
-        first_octet = int(mac.replace(":", "").replace("-", "")[:2], 16)
-        return bool(first_octet & 0x02)
+        normalized = mac.replace(":", "").replace("-", "").lower()
+        first_octet = int(normalized[:2], 16)
+        # Check locally administered bit (bit 1 of first octet)
+        if first_octet & 0x02:
+            return True
+        # Check known DC OUI prefixes (e.g. E0:4E:7A from docs/BROKER_ROLES.md)
+        oui_prefix = normalized[:6]
+        return oui_prefix in ("e04e7a",)
     except (ValueError, TypeError):
         return False
 

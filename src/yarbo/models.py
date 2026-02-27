@@ -608,7 +608,8 @@ class YarboTelemetry:
             if battery_msg
             else d.get("wireless_charge_current"),
             route_priority=d.get("route_priority")
-            or (state_msg.get("route_priority") if state_msg else None),
+            if d.get("route_priority") is not None
+            else (state_msg.get("route_priority") if state_msg else None),
             last_updated=last_updated,
             latitude=gps_lat,
             longitude=gps_lon,

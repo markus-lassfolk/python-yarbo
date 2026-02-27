@@ -52,7 +52,7 @@ async def main(
 ) -> None:
     print(f"Connecting to {broker}:{LOCAL_PORT} (sn={sn})")
     print(f"Subscribe: snowbot/{{sn}}/device/{TOPIC_LEAF_DEVICE_INFO}")
-    print(f"Publish:   snowbot/{{sn}}/app/<cmd> with payload {{}}")
+    print("Publish:   snowbot/{sn}/app/<cmd> with payload {}")
     print()
 
     transport = MqttTransport(broker=broker, sn=sn, port=LOCAL_PORT)
@@ -62,6 +62,7 @@ async def main(
         # Optional: acquire controller first (some commands may require it)
         if controller_first:
             from yarbo.local import YarboLocalClient
+
             client = YarboLocalClient(broker=broker, sn=sn)
             client._transport = transport
             await client._ensure_controller()
@@ -90,8 +91,10 @@ async def main(
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Test get_deviceinfo MQTT command")
-    ap.add_argument("--broker", default="", help="Broker host (required; use yarbo discover to find)")
-    ap.add_argument("--sn", default="24400102L8HO5227", help="Robot serial number")
+    ap.add_argument(
+        "--broker", default="", help="Broker host (required; use yarbo discover to find)"
+    )
+    ap.add_argument("--sn", default="YOUR_SERIAL", help="Robot serial number")
     ap.add_argument("--timeout", type=float, default=5.0, help="Wait timeout per cmd (s)")
     ap.add_argument("--controller-first", action="store_true", help="Send get_controller first")
     args = ap.parse_args()
