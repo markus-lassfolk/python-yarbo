@@ -194,6 +194,19 @@ class TestYarboTelemetry:
         t = YarboTelemetry.from_dict(sample_telemetry_dict)
         assert t.machine_controller == 1
 
+    def test_battery_temp_err_in_fixture(self, sample_telemetry_dict):
+        """BatteryMSG.temp_err is parsed into battery_temp_err (0 = OK)."""
+        t = YarboTelemetry.from_dict(sample_telemetry_dict)
+        assert t.battery_temp_err == 0
+
+    def test_device_msg_fixture_no_missing_structured_keys(self, sample_telemetry_dict):
+        """Every key in the live fixture is represented in the structured status table."""
+        from yarbo.models import STRUCTURED_MQTT_KEYS, flatten_mqtt_payload
+
+        flat = flatten_mqtt_payload(sample_telemetry_dict)
+        missing = set(flat.keys()) - STRUCTURED_MQTT_KEYS
+        assert not missing, f"Fixture keys missing from structured table: {sorted(missing)}"
+
 
 class TestYarboTelemetryAliases:
     """Tests for battery_capacity and serial_number aliases (Issue #16)."""

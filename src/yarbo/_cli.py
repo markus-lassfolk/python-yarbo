@@ -153,6 +153,14 @@ def _add_connection_args(parser: argparse.ArgumentParser) -> None:
         metavar="N",
         help="Max hosts per subnet when auto-discovering (default: 512).",
     )
+    parser.add_argument(
+        "--log-mqtt",
+        type=str,
+        default=None,
+        metavar="FILE",
+        dest="log_mqtt",
+        help="Append every raw MQTT message (topic + payload JSON) to FILE for comparison with CLI output.",
+    )
 
 
 async def _with_client(
@@ -164,6 +172,7 @@ async def _with_client(
             broker=args.broker,
             sn=args.serial,
             port=getattr(args, "port", 1883),
+            mqtt_log_path=getattr(args, "log_mqtt", None),
         )
         await client.connect()
         try:
@@ -186,7 +195,12 @@ async def _with_client(
     last_err: Exception | None = None
     for ep in ordered:
         try:
-            client = YarboLocalClient(broker=ep.ip, port=ep.port, sn=ep.sn)
+            client = YarboLocalClient(
+                broker=ep.ip,
+                port=ep.port,
+                sn=ep.sn,
+                mqtt_log_path=getattr(args, "log_mqtt", None),
+            )
             await client.connect()
             try:
                 yield (client, ep.ip)
@@ -454,6 +468,7 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
         ),
         ("HeadSerialNumber", status.head_serial_number),
         ("BatteryStatus", status.battery_status),
+        ("BatteryTempErr", status.battery_temp_err),
         ("IsPlanning", status.on_going_planning),
         ("IsPaused", status.planning_paused),
         ("IsRecharging", status.on_going_recharging),
@@ -467,6 +482,8 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
         ("LedRegister", str(status.led) if status.led is not None else None),
         ("WirelessChargeVoltage", status.wireless_charge_voltage),
         ("WirelessChargeCurrent", status.wireless_charge_current),
+        ("WirelessRechargeState", status.wireless_recharge_state),
+        ("WirelessRechargeErrorCode", status.wireless_recharge_error_code),
         ("RoutePriority", status.route_priority),
         ("State", status.state),
         ("Speed", status.speed),
@@ -475,6 +492,46 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
         ("Longitude", status.longitude),
         ("Altitude", status.altitude),
         ("FixQuality", status.fix_quality),
+        # Extended MQTT fields
+        ("BodyRechargeState", status.body_recharge_state),
+        ("RtkGgaAtnDis", status.rtk_gga_atn_dis),
+        ("RtkHeadingAtnDis", status.rtk_heading_atn_dis),
+        ("RtkHeadingDop", status.rtk_heading_dop),
+        ("RtkHeadingStatus", status.rtk_heading_status),
+        ("RtkPre4Timestamp", status.rtk_pre4_timestamp),
+        ("RtkVersion", status.rtk_version),
+        ("ChuteSteeringEngineInfo", status.chute_steering_engine_info),
+        ("ElecNavFrontRightSensor", status.elec_navigation_front_right_sensor),
+        ("ElecNavRearRightSensor", status.elec_navigation_rear_right_sensor),
+        ("HeadGyroPitch", status.head_gyro_pitch),
+        ("HeadGyroRoll", status.head_gyro_roll),
+        ("RainSensorData", status.rain_sensor_data),
+        ("AdjustangleStatus", status.adjustangle_status),
+        ("AutoDrawWaitingState", status.auto_draw_waiting_state),
+        ("EnStateLed", status.en_state_led),
+        ("EnWarnLed", status.en_warn_led),
+        ("OnGoingToStartPoint", status.on_going_to_start_point),
+        ("OnMulPoints", status.on_mul_points),
+        ("RobotFollowState", status.robot_follow_state),
+        ("ScheduleCancel", status.schedule_cancel),
+        ("VisionAutoDrawState", status.vision_auto_draw_state),
+        ("BaseStatus", status.base_status),
+        ("Bds", status.bds),
+        ("Bs", status.bs),
+        ("Ms", status.ms),
+        ("S", status.s),
+        ("Sbs", status.sbs),
+        ("Tms", status.tms),
+        ("GreenGrassUpdateSwitch", status.green_grass_update_switch),
+        ("IpcameraOtaSwitch", status.ipcamera_ota_switch),
+        ("RtcmAge", status.rtcm_age),
+        ("RtcmCurrentSourceType", status.rtcm_current_source_type),
+        ("RtkBaseGngga", status.rtk_base_gngga),
+        ("RtkRoverHeading", status.rtk_rover_heading),
+        ("UltrasonicLfDis", status.ultrasonic_lf_dis),
+        ("UltrasonicMtDis", status.ultrasonic_mt_dis),
+        ("UltrasonicRfDis", status.ultrasonic_rf_dis),
+        ("PushPodCurrent", status.push_pod_current),
     ]
     for label, value in fields:
         print(f"  {label:<24}: {_fmt(value)}")
@@ -483,6 +540,7 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
     all_mqtt = status.all_mqtt_values()
     if all_mqtt:
         print()
+        print("  Data coverage: All keys from the DeviceMSG payload are listed below; nothing is dropped.")
         print("  --- All MQTT keys (from DeviceMSG payload) ---")
         for k in sorted(all_mqtt.keys()):
             if _is_sensitive_key(k):

@@ -93,6 +93,7 @@ class YarboLocalClient:
         sn: str = "",
         port: int = LOCAL_PORT,
         auto_controller: bool = True,
+        mqtt_log_path: str | None = None,
     ) -> None:
         if not broker:
             raise ValueError(
@@ -103,7 +104,9 @@ class YarboLocalClient:
         self._sn = sn
         self._port = port
         self._auto_controller = auto_controller
-        self._transport = MqttTransport(broker=broker, sn=sn, port=port)
+        self._transport = MqttTransport(
+            broker=broker, sn=sn, port=port, mqtt_log_path=mqtt_log_path
+        )
         self._controller_acquired = False
 
     # ------------------------------------------------------------------
