@@ -407,10 +407,17 @@ class MqttTransport:
             is_reconnect = self._was_connected
             # Always re-subscribe to all feedback topics (covers both initial connect
             # and automatic broker reconnections initiated by paho).
-            for leaf in ALL_FEEDBACK_LEAVES:
-                topic = TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=leaf)
-                client.subscribe(topic, qos=self._qos)
-                logger.debug("Subscribed: %s", topic)
+            if self._sn:
+                for leaf in ALL_FEEDBACK_LEAVES:
+                    topic = TOPIC_DEVICE_TMPL.format(sn=self._sn, feedback=leaf)
+                    client.subscribe(topic, qos=self._qos)
+                    logger.debug("Subscribed: %s", topic)
+            else:
+                # Discovery mode: no serial number known — use wildcards
+                for leaf in ALL_FEEDBACK_LEAVES:
+                    topic = f"snowbot/+/device/{leaf}"
+                    client.subscribe(topic, qos=self._qos)
+                    logger.debug("Subscribed (discovery): %s", topic)
             if self._loop:
                 self._loop.call_soon_threadsafe(self._connected.set)
                 if is_reconnect:
@@ -471,6 +478,12 @@ class MqttTransport:
             # Track heartbeat reception time (float write is atomic in CPython).
             if Topic.leaf(msg.topic) == TOPIC_LEAF_HEART_BEAT:
                 self._last_heartbeat = time.time()
+            # Auto-discover serial number from wildcard subscription
+            if not self._sn:
+                parts = msg.topic.split("/")
+                if len(parts) >= 2 and parts[0] == "snowbot" and parts[1]:
+                    self._sn = parts[1]
+                    logger.info("Discovered robot serial number: %s", self._sn)
             if self._loop and self._message_queues:
                 for q in list(self._message_queues):
                     # Each consumer gets its own deep copy so that no two consumers
