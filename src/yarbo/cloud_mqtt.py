@@ -23,8 +23,9 @@ from .local import YarboLocalClient
 from .mqtt import MqttTransport
 
 #: Default Tencent TDMQ username for Yarbo cloud access.
-#: Override with the ``YARBO_MQTT_USERNAME`` environment variable.
-CLOUD_MQTT_DEFAULT_USERNAME = os.environ.get("YARBO_MQTT_USERNAME", "hytech")
+#: Used when neither the ``username`` argument nor the ``YARBO_MQTT_USERNAME``
+#: environment variable is provided.
+CLOUD_MQTT_DEFAULT_USERNAME = "hytech"
 
 
 class YarboCloudMqttClient(YarboLocalClient):
@@ -47,10 +48,14 @@ class YarboCloudMqttClient(YarboLocalClient):
 
     Args:
         sn:             Robot serial number.
-        username:       Tencent TDMQ username (default: env ``YARBO_MQTT_USERNAME``
-                        or ``"hytech"``).
+        username:       Tencent TDMQ username. If omitted (``None``), reads
+                        ``YARBO_MQTT_USERNAME`` from the environment at
+                        construction time, falling back to
+                        ``CLOUD_MQTT_DEFAULT_USERNAME``.
         password:       Tencent TDMQ password. **Required** — pass explicitly or
                         set ``YARBO_MQTT_PASSWORD`` in the environment.
+                        If omitted (``None``), reads ``YARBO_MQTT_PASSWORD`` at
+                        construction time.
         broker:         MQTT broker hostname (default: Tencent TDMQ endpoint).
         port:           Broker TLS port (default: 8883).
         auto_controller: Send ``get_controller`` automatically (default True).
@@ -67,15 +72,19 @@ class YarboCloudMqttClient(YarboLocalClient):
     def __init__(
         self,
         sn: str,
-        username: str = CLOUD_MQTT_DEFAULT_USERNAME,
+        username: str | None = None,
         password: str | None = None,
         broker: str = CLOUD_BROKER,
         port: int = CLOUD_PORT_TLS,
         auto_controller: bool = True,
         tls_ca_certs: str | None = None,
     ) -> None:
+        if username is None:
+            username = os.environ.get("YARBO_MQTT_USERNAME", CLOUD_MQTT_DEFAULT_USERNAME)
+
         if password is None:
             password = os.environ.get("YARBO_MQTT_PASSWORD", "")
+
         if not password:
             raise ValueError(
                 "YarboCloudMqttClient requires a password. "
