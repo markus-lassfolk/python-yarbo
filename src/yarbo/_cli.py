@@ -104,7 +104,6 @@ _SENSITIVE_KEYS: frozenset[str] = frozenset(
         "credential",
         "auth_key",
         "auth",
-        "key",
     }
 )
 
@@ -445,11 +444,11 @@ async def _run_status(args: argparse.Namespace) -> None:
                 if status:
                     print(f"Connected via {ep.ip}:{ep.port}")
                     _print_status(status, ep.ip, ep.sn)
+                    return
                 else:
                     print("Connected but no telemetry received.")
             finally:
                 await client.disconnect()
-            return
         except (YarboError, OSError, TimeoutError) as e:
             print(f"  Failed: {e}")
             continue
