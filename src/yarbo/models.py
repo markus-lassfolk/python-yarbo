@@ -592,14 +592,12 @@ class YarboTelemetry:
             car_controller=_optional_bool(
                 state_msg.get("car_controller") if state_msg else d.get("car_controller")
             ),
-            wireless_charge_voltage=(
-                battery_msg.get("wireless_charge_voltage") if battery_msg else None
-            )
-            or d.get("wireless_charge_voltage"),
-            wireless_charge_current=(
-                battery_msg.get("wireless_charge_current") if battery_msg else None
-            )
-            or d.get("wireless_charge_current"),
+            wireless_charge_voltage=battery_msg.get("wireless_charge_voltage")
+            if battery_msg
+            else d.get("wireless_charge_voltage"),
+            wireless_charge_current=battery_msg.get("wireless_charge_current")
+            if battery_msg
+            else d.get("wireless_charge_current"),
             route_priority=d.get("route_priority")
             or (state_msg.get("route_priority") if state_msg else None),
             last_updated=last_updated,
