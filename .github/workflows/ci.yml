@@ -83,3 +83,21 @@ jobs:
       #     token: ${{ secrets.CODECOV_TOKEN }}
       #     files: coverage.xml
       #     fail_ci_if_error: false
+
+  # Gate jobs with stable names for branch protection (required status checks).
+  # Configure branch protection to require "Lint" and "Test" if you use 2 checks.
+  lint-gate:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: lint
+    if: always() && (needs.lint.result == 'success' || needs.lint.result == 'failure')
+    steps:
+      - run: exit ${{ needs.lint.result == 'success' && 0 || 1 }}
+
+  test-gate:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: test
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'failure')
+    steps:
+      - run: exit ${{ needs.test.result == 'success' && 0 || 1 }}
