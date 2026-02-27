@@ -32,7 +32,9 @@ jobs:
         run: pip install ".[dev]"
 
       - name: Run pip-audit
-        run: pip-audit --skip-pkg python-yarbo --strict
+        run: |
+          pip freeze | grep -v "python-yarbo" > requirements-audit.txt
+          pip-audit -r requirements-audit.txt --strict
 
   bandit:
     name: bandit (static analysis)
