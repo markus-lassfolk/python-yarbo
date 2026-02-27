@@ -350,7 +350,10 @@ async def _run_status(args: argparse.Namespace) -> None:
         await client.connect()
         try:
             status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
-            _print_status(status, args.broker, args.serial)
+            if status:
+                _print_status(status, args.broker, args.serial)
+            else:
+                print("Connected but no telemetry received.")
         finally:
             await client.disconnect()
         return
@@ -515,7 +518,7 @@ async def _run_plans(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         plans = await asyncio.wait_for(client.list_plans(), timeout=args.timeout)
         for p in plans:
-            print(f"  {p.plan_id}: {p.name}")
+            print(f"  {p.plan_id}: {p.plan_name}")
         if not plans:
             print("No plans.")
         break
