@@ -12,12 +12,14 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from yarbo.cloud_mqtt import (
-    CLOUD_MQTT_DEFAULT_PASSWORD,
     CLOUD_MQTT_DEFAULT_USERNAME,
     YarboCloudMqttClient,
 )
 from yarbo.const import CLOUD_BROKER, CLOUD_PORT_TLS
 from yarbo.models import TelemetryEnvelope
+
+# Sentinel test password — never a real credential.
+_TEST_PASSWORD = "test-password-sentinel"
 
 
 @pytest.fixture
@@ -46,25 +48,46 @@ def mock_transport_cloud():
         yield instance, MockT
 
 
+def test_password_default_from_env(monkeypatch):
+    """YARBO_MQTT_PASSWORD env var sets CLOUD_MQTT_DEFAULT_PASSWORD at import time."""
+    import importlib  # noqa: PLC0415
+
+    monkeypatch.setenv("YARBO_MQTT_PASSWORD", _TEST_PASSWORD)
+    import yarbo.cloud_mqtt as cm  # noqa: PLC0415
+
+    importlib.reload(cm)
+    try:
+        assert cm.CLOUD_MQTT_DEFAULT_PASSWORD == _TEST_PASSWORD
+    finally:
+        # Reload without the env var to restore the module to a clean state.
+        monkeypatch.delenv("YARBO_MQTT_PASSWORD", raising=False)
+        importlib.reload(cm)
+
+
 @pytest.mark.asyncio
 class TestYarboCloudMqttClientDefaults:
     async def test_default_broker_and_port(self, mock_transport_cloud):
         _, mock_t = mock_transport_cloud
-        YarboCloudMqttClient(sn="TESTSN")
+        YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD)
         kwargs = mock_t.call_args[1]
         assert kwargs["broker"] == CLOUD_BROKER
         assert kwargs["port"] == CLOUD_PORT_TLS
 
-    async def test_default_credentials(self, mock_transport_cloud):
+    async def test_default_username(self, mock_transport_cloud):
+        """Username should default to CLOUD_MQTT_DEFAULT_USERNAME (env or 'hytech')."""
         _, mock_t = mock_transport_cloud
-        YarboCloudMqttClient(sn="TESTSN")
+        YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD)
         kwargs = mock_t.call_args[1]
         assert kwargs["username"] == CLOUD_MQTT_DEFAULT_USERNAME
-        assert kwargs["password"] == CLOUD_MQTT_DEFAULT_PASSWORD
+
+    async def test_empty_password_raises(self, mock_transport_cloud):
+        """Empty password must raise ValueError — no silent unauthenticated connections."""
+        with pytest.raises(ValueError, match="password"):
+            YarboCloudMqttClient(sn="TESTSN", password="")
 
     async def test_tls_enabled(self, mock_transport_cloud):
         _, mock_t = mock_transport_cloud
-        YarboCloudMqttClient(sn="TESTSN")
+        YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD)
         kwargs = mock_t.call_args[1]
         assert kwargs["tls"] is True
 
@@ -77,7 +100,7 @@ class TestYarboCloudMqttClientDefaults:
 
     async def test_custom_ca_certs(self, mock_transport_cloud):
         _, mock_t = mock_transport_cloud
-        YarboCloudMqttClient(sn="TESTSN", tls_ca_certs="/path/to/ca.pem")
+        YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD, tls_ca_certs="/path/to/ca.pem")
         kwargs = mock_t.call_args[1]
         assert kwargs["tls_ca_certs"] == "/path/to/ca.pem"
 
@@ -88,7 +111,7 @@ class TestYarboCloudMqttClientAPI:
 
     async def test_connect_disconnect(self, mock_transport_cloud):
         transport, _ = mock_transport_cloud
-        client = YarboCloudMqttClient(sn="TESTSN")
+        client = YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD)
         await client.connect()
         transport.connect.assert_called_once()
         await client.disconnect()
@@ -96,14 +119,14 @@ class TestYarboCloudMqttClientAPI:
 
     async def test_context_manager(self, mock_transport_cloud):
         transport, _ = mock_transport_cloud
-        async with YarboCloudMqttClient(sn="TESTSN") as client:
+        async with YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD) as client:
             assert client.is_connected
         transport.connect.assert_called_once()
         transport.disconnect.assert_called_once()
 
     async def test_lights_on(self, mock_transport_cloud):
         transport, _ = mock_transport_cloud
-        client = YarboCloudMqttClient(sn="TESTSN")
+        client = YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD)
         await client.connect()
         client._controller_acquired = True
         await client.lights_on()
@@ -112,12 +135,12 @@ class TestYarboCloudMqttClientAPI:
 
     async def test_serial_number(self, mock_transport_cloud):
         _, _ = mock_transport_cloud
-        client = YarboCloudMqttClient(sn="24400102L8HO5227")
+        client = YarboCloudMqttClient(sn="24400102L8HO5227", password=_TEST_PASSWORD)
         assert client.serial_number == "24400102L8HO5227"
 
     async def test_watch_telemetry_yields(self, mock_transport_cloud):
         _transport, _ = mock_transport_cloud
-        client = YarboCloudMqttClient(sn="TESTSN")
+        client = YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD)
         await client.connect()
         items = []
         async for t in client.watch_telemetry():

@@ -16,14 +16,22 @@ References:
 
 from __future__ import annotations
 
+import os
+
 from .const import CLOUD_BROKER, CLOUD_PORT_TLS
 from .local import YarboLocalClient
 from .mqtt import MqttTransport
 
 #: Default Tencent TDMQ username for Yarbo cloud access.
-CLOUD_MQTT_DEFAULT_USERNAME = "hytech"
+#: Override with the ``YARBO_MQTT_USERNAME`` environment variable.
+CLOUD_MQTT_DEFAULT_USERNAME = os.environ.get("YARBO_MQTT_USERNAME", "hytech")
+
 #: Default Tencent TDMQ password for Yarbo cloud access.
-CLOUD_MQTT_DEFAULT_PASSWORD = "REDACTED_CREDENTIAL"
+#: Must be supplied via the ``YARBO_MQTT_PASSWORD`` environment variable or
+#: passed explicitly to :class:`YarboCloudMqttClient`.  No hardcoded fallback
+#: is provided; an empty string triggers a :exc:`ValueError` at construction
+#: time to prevent accidentally connecting without credentials.
+CLOUD_MQTT_DEFAULT_PASSWORD = os.environ.get("YARBO_MQTT_PASSWORD", "")
 
 
 class YarboCloudMqttClient(YarboLocalClient):
@@ -36,6 +44,9 @@ class YarboCloudMqttClient(YarboLocalClient):
 
     Example (async context manager)::
 
+        import os
+        os.environ["YARBO_MQTT_PASSWORD"] = "your-tdmq-password"
+
         async with YarboCloudMqttClient(sn="24400102L8HO5227") as client:
             await client.lights_on()
             async for telemetry in client.watch_telemetry():
@@ -43,8 +54,10 @@ class YarboCloudMqttClient(YarboLocalClient):
 
     Args:
         sn:             Robot serial number.
-        username:       Tencent TDMQ username (default: ``"hytech"``).
-        password:       Tencent TDMQ password.
+        username:       Tencent TDMQ username (default: env ``YARBO_MQTT_USERNAME``
+                        or ``"hytech"``).
+        password:       Tencent TDMQ password. **Required** — pass explicitly or
+                        set ``YARBO_MQTT_PASSWORD`` in the environment.
         broker:         MQTT broker hostname (default: Tencent TDMQ endpoint).
         port:           Broker TLS port (default: 8883).
         auto_controller: Send ``get_controller`` automatically (default True).
@@ -52,6 +65,10 @@ class YarboCloudMqttClient(YarboLocalClient):
                         When ``None`` (default), server certificate is not
                         verified (suitable for testing; use a CA bundle in
                         production).
+
+    Raises:
+        ValueError: If *password* is empty (no value passed and
+                    ``YARBO_MQTT_PASSWORD`` not set in the environment).
     """
 
     def __init__(
@@ -64,6 +81,12 @@ class YarboCloudMqttClient(YarboLocalClient):
         auto_controller: bool = True,
         tls_ca_certs: str | None = None,
     ) -> None:
+        if not password:
+            raise ValueError(
+                "YarboCloudMqttClient requires a password. "
+                "Pass it explicitly or set the YARBO_MQTT_PASSWORD environment variable."
+            )
+
         # Initialise parent fields directly (bypass super().__init__'s
         # transport construction so we can inject our TLS-enabled transport).
         self._broker = broker
