@@ -504,6 +504,7 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
         ("RoutePriority", status.route_priority),
         ("State", status.state),
         ("Speed", status.speed),
+        # Latitude/Longitude are intentionally exposed (core feature for location queries)
         ("Latitude", status.latitude),
         ("Longitude", status.longitude),
         ("Altitude", status.altitude),
