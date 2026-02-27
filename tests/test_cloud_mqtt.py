@@ -11,10 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from yarbo.cloud_mqtt import (
-    CLOUD_MQTT_DEFAULT_USERNAME,
-    YarboCloudMqttClient,
-)
+from yarbo.cloud_mqtt import CLOUD_MQTT_DEFAULT_USERNAME, YarboCloudMqttClient
 from yarbo.const import CLOUD_BROKER, CLOUD_PORT_TLS
 from yarbo.models import TelemetryEnvelope
 
@@ -48,11 +45,19 @@ def mock_transport_cloud():
         yield instance, MockT
 
 
-def test_password_default_from_env(monkeypatch, mock_transport_cloud):
-    """YARBO_MQTT_PASSWORD should be read at construction time when omitted."""
-    monkeypatch.setenv("YARBO_MQTT_PASSWORD", _TEST_PASSWORD)
+def test_password_runtime_env_fallback(monkeypatch, mock_transport_cloud):
+    """YARBO_MQTT_PASSWORD is read at construction time when password=None."""
     _, mock_t = mock_transport_cloud
+    monkeypatch.setenv("YARBO_MQTT_PASSWORD", _TEST_PASSWORD)
+    YarboCloudMqttClient(sn="TESTSN", password=None)
+    kwargs = mock_t.call_args[1]
+    assert kwargs["password"] == _TEST_PASSWORD
 
+
+def test_password_runtime_env_omitted(monkeypatch, mock_transport_cloud):
+    """YARBO_MQTT_PASSWORD is read at construction time when password is omitted."""
+    _, mock_t = mock_transport_cloud
+    monkeypatch.setenv("YARBO_MQTT_PASSWORD", _TEST_PASSWORD)
     YarboCloudMqttClient(sn="TESTSN")
     kwargs = mock_t.call_args[1]
     assert kwargs["password"] == _TEST_PASSWORD
