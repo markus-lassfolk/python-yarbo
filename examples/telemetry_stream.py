@@ -43,7 +43,7 @@ async def main(broker: str, sn: str, count: int) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Stream Yarbo telemetry")
-    ap.add_argument("--broker", default="", help="MQTT broker IP (required; use yarbo discover to find)")
+    ap.add_argument("--broker", required=True, help="MQTT broker IP (required; use yarbo discover to find)")
     ap.add_argument("--sn", required=True, help="Robot serial number")
     ap.add_argument("--count", type=int, default=20, help="Number of messages to receive")
     args = ap.parse_args()

@@ -59,7 +59,7 @@ async def main(broker: str, sn: str, lights_off: bool) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Yarbo basic local control")
-    ap.add_argument("--broker", default="", help="MQTT broker IP (required; use yarbo discover to find)")
+    ap.add_argument("--broker", required=True, help="MQTT broker IP (required; use yarbo discover to find)")
     ap.add_argument("--sn", required=True, help="Robot serial number")
     ap.add_argument("--lights-off", action="store_true", help="Turn lights off instead of on")
     args = ap.parse_args()
