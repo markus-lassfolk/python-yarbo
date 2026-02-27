@@ -423,7 +423,9 @@ async def discover(
     seen: set[str] = set()
     unique_candidates = [c for c in candidates if not (c in seen or seen.add(c))]  # type: ignore[func-returns-value]
 
-    logger.info("Scanning %d candidate(s) for Yarbo brokers (port %d)", len(unique_candidates), port)
+    logger.info(
+        "Scanning %d candidate(s) for Yarbo brokers (port %d)", len(unique_candidates), port
+    )
 
     semaphore = asyncio.Semaphore(_SCAN_CONCURRENCY)
     endpoints: list[YarboEndpoint] = []
@@ -444,11 +446,7 @@ async def discover(
             loop = asyncio.get_running_loop()
             mac = await loop.run_in_executor(None, _get_mac_for_ip, ip)
             hostname = await loop.run_in_executor(None, _get_hostname_for_ip, ip)
-            path = (
-                "dc"
-                if (is_dc_endpoint(mac) or _hostname_indicates_dc(hostname))
-                else "rover"
-            )
+            path = "dc" if (is_dc_endpoint(mac) or _hostname_indicates_dc(hostname)) else "rover"
             return YarboEndpoint(
                 ip=ip,
                 port=port,
@@ -523,98 +521,5 @@ async def discover_yarbo(
     Uses :func:`discover` and maps to :class:`DiscoveredRobot`. For path
     and recommendation use :func:`discover` and :class:`YarboEndpoint` instead.
     """
-    endpoints = await discover(
-        timeout=timeout, port=port, subnet=subnet, max_hosts=max_hosts
-    )
+    endpoints = await discover(timeout=timeout, port=port, subnet=subnet, max_hosts=max_hosts)
     return [DiscoveredRobot(broker_host=e.ip, broker_port=e.port, sn=e.sn) for e in endpoints]
-
-
-async def _probe_broker(
-    host: str,
-    port: int,
-    timeout: float,
-) -> DiscoveredRobot:
-    """
-    Probe a single host:port for a Yarbo MQTT broker.
-
-    First checks TCP reachability, then attempts MQTT subscription to
-    extract the robot serial number from incoming messages.
-
-    Raises:
-        OSError: If the host is unreachable.
-    """
-    # Quick TCP port check
-    try:
-        _, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=min(timeout, 1.5)
-        )
-        writer.close()
-        await writer.wait_closed()
-    except (TimeoutError, OSError) as exc:
-        raise OSError(f"Port {host}:{port} unreachable") from exc
-
-    logger.debug("TCP port open on %s:%d — trying MQTT sniff", host, port)
-
-    # Try MQTT sniff to get SN
-    sn = await _sniff_sn(host, port, timeout)
-    return DiscoveredRobot(broker_host=host, broker_port=port, sn=sn)
-
-
-async def _sniff_sn(host: str, port: int, timeout: float) -> str:
-    """
-    Connect to the MQTT broker anonymously and listen for robot messages.
-
-    Subscribes to ``snowbot/+/device/DeviceMSG`` and ``snowbot/+/device/data_feedback``
-    and extracts the SN from the first matching message topic.
-
-    Returns:
-        Serial number string, or ``""`` if none arrived within timeout.
-    """
-    try:
-        import paho.mqtt.client as mqtt  # noqa: PLC0415
-
-        loop = asyncio.get_running_loop()
-        sn_future: asyncio.Future[str] = loop.create_future()
-
-        def on_connect(
-            client: mqtt.Client,
-            ud: object,
-            flags: object,
-            reason_code: object,
-            props: object,
-        ) -> None:
-            # Normalise reason_code to int (paho v2 passes a ReasonCode object)
-            rc = getattr(reason_code, "value", reason_code)
-            if rc == 0:
-                client.subscribe("snowbot/+/device/DeviceMSG", qos=0)
-                client.subscribe("snowbot/+/device/data_feedback", qos=0)
-
-        def on_message(client: mqtt.Client, ud: object, msg: mqtt.MQTTMessage) -> None:
-            # Topic: snowbot/{SN}/device/{leaf}
-            parts = msg.topic.split("/")
-            if len(parts) >= 2 and not sn_future.done():
-                loop.call_soon_threadsafe(sn_future.set_result, parts[1])
-
-        client = mqtt.Client(
-            callback_api_version=mqtt.CallbackAPIVersion.VERSION2,  # type: ignore[attr-defined, unused-ignore]
-            client_id="",  # anonymous
-        )
-        client.on_connect = on_connect
-        client.on_message = on_message
-        client.connect_async(host, port, keepalive=10)
-        client.loop_start()
-
-        try:
-            return await asyncio.wait_for(sn_future, timeout=timeout)
-        except TimeoutError:
-            return ""
-        finally:
-            client.disconnect()
-            await loop.run_in_executor(None, client.loop_stop)
-
-    except ImportError:
-        logger.debug("paho-mqtt not installed — cannot sniff SN")
-        return ""
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("MQTT sniff error on %s:%d: %s", host, port, exc)
-        return ""
