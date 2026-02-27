@@ -682,7 +682,7 @@ async def _run_roller(args: argparse.Namespace) -> None:
 
 async def _run_manual_stop(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
-        hard = args.mode == "normal"
+        hard = args.mode == "idle"
         emergency = args.mode == "emergency"
         await client.stop_manual_drive(hard=hard, emergency=emergency)
         print(f"Manual drive stopped ({args.mode}).")
