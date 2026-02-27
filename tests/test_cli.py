@@ -308,10 +308,11 @@ class TestRunStatus:
 
         assert exc_info.value.code != 0
 
-    async def test_discover_path_prints_no_endpoints(self, capsys):
-        """'No Yarbo endpoints found.' printed when discover returns []."""
+    async def test_discover_path_exits_nonzero_when_no_endpoints(self):
+        """SystemExit raised when discover returns [] (consistent with other failures)."""
         args = _make_args()
-        with patch("yarbo._cli.discover", AsyncMock(return_value=[])):
+        with (
+            patch("yarbo._cli.discover", AsyncMock(return_value=[])),
+            pytest.raises(SystemExit),
+        ):
             await _run_status(args)
-        out = capsys.readouterr().out
-        assert "No Yarbo endpoints found" in out

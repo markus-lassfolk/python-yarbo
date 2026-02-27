@@ -192,7 +192,10 @@ async def _with_client(
                 yield (client, ep.ip)
                 return
             finally:
-                await client.disconnect()
+                try:
+                    await client.disconnect()
+                except Exception:
+                    pass
         except (YarboError, OSError, TimeoutError) as e:
             last_err = e
             continue
@@ -407,53 +410,17 @@ async def _run_discover(args: argparse.Namespace) -> None:
 # ----- Status (with fallback) -----
 async def _run_status(args: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
-    if args.broker and args.serial:
-        client = YarboLocalClient(broker=args.broker, sn=args.serial, port=args.port)
-        await client.connect()
-        try:
-            status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
-            if status:
-                _print_status(status, args.broker, args.serial)
-            else:
-                print("Error: connected but no telemetry received within timeout.")
-                sys.exit(1)
-        except TimeoutError:
-            print("Error: timeout waiting for status.")
+    if not (args.broker and args.serial):
+        print("Discovering...")
+    async for client, ip in _with_client(args):
+        status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
+        if status:
+            sn = args.serial if args.broker and args.serial else client.sn
+            _print_status(status, ip or args.broker, sn)
+        else:
+            print("Error: connected but no telemetry received within timeout.")
             sys.exit(1)
-        finally:
-            await client.disconnect()
-        return
-    print("Discovering...")
-    endpoints = await discover(
-        timeout=args.timeout,
-        port=args.port,
-        subnet=args.subnet,
-        max_hosts=args.max_hosts,
-    )
-    if not endpoints:
-        print("No Yarbo endpoints found.")
-        return
-    ordered = connection_order(endpoints)
-    for ep in ordered:
-        try:
-            print(f"Trying {ep.ip}:{ep.port} ({ep.path})...")
-            client = YarboLocalClient(broker=ep.ip, port=ep.port, sn=ep.sn)
-            await client.connect()
-            try:
-                status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
-                if status:
-                    print(f"Connected via {ep.ip}:{ep.port}")
-                    _print_status(status, ep.ip, ep.sn)
-                    return
-                else:
-                    print("Connected but no telemetry received.")
-            finally:
-                await client.disconnect()
-        except (YarboError, OSError, TimeoutError) as e:
-            print(f"  Failed: {e}")
-            continue
-    print("All endpoints failed.")
-    sys.exit(1)
+        break
 
 
 def _fmt(v: Any) -> str:
