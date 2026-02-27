@@ -206,6 +206,8 @@ def _parse_gngga(  # noqa: PLR0912
 ) -> tuple[float | None, float | None, float | None, int]:
     """Parse a GNGGA NMEA 0183 sentence into GPS coordinates.
 
+    NOTE: Latitude/Longitude are intentionally exposed as core features for location queries.
+
     Format::
 
         $GNGGA,time,lat,N/S,lon,E/W,quality,sats,hdop,alt,M,...*checksum
@@ -414,6 +416,7 @@ class YarboTelemetry:
     """Elapsed plan duration in seconds. From ``plan_feedback``."""
 
     # GPS fields (parsed from rtk_base_data.rover.gngga NMEA sentence)
+    # NOTE: Latitude/Longitude are intentionally exposed as core features for location queries
     latitude: float | None = None
     """GPS latitude in decimal degrees (WGS84, positive=N). Source: ``gngga``."""
 
