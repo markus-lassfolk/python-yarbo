@@ -31,14 +31,18 @@ def flatten_mqtt_payload(payload: dict[str, Any], prefix: str = "") -> dict[str,
         if isinstance(v, dict) and v:
             out.update(flatten_mqtt_payload(v, key))
         elif isinstance(v, list):
-            for i, item in enumerate(v):
-                if isinstance(item, dict):
-                    out.update(flatten_mqtt_payload(item, f"{key}.{i}"))
-                else:
-                    out[f"{key}.{i}"] = item
+            if not v:
+                out[key] = v
+            else:
+                for i, item in enumerate(v):
+                    if isinstance(item, dict):
+                        out.update(flatten_mqtt_payload(item, f"{key}.{i}"))
+                    else:
+                        out[f"{key}.{i}"] = item
         else:
             out[key] = v
     return out
+
 
 # ---------------------------------------------------------------------------
 # Head type enum
