@@ -20,10 +20,7 @@ from .const import CLOUD_BROKER, CLOUD_PORT_TLS
 from .local import YarboLocalClient
 from .mqtt import MqttTransport
 
-#: Default Tencent TDMQ username for Yarbo cloud access.
-CLOUD_MQTT_DEFAULT_USERNAME = "hytech"
-#: Default Tencent TDMQ password for Yarbo cloud access.
-CLOUD_MQTT_DEFAULT_PASSWORD = "REDACTED_CREDENTIAL"
+
 
 
 class YarboCloudMqttClient(YarboLocalClient):
@@ -43,8 +40,8 @@ class YarboCloudMqttClient(YarboLocalClient):
 
     Args:
         sn:             Robot serial number.
-        username:       Tencent TDMQ username (default: ``"hytech"``).
-        password:       Tencent TDMQ password.
+        username:       Tencent TDMQ username (required).
+        password:       Tencent TDMQ password (required).
         broker:         MQTT broker hostname (default: Tencent TDMQ endpoint).
         port:           Broker TLS port (default: 8883).
         auto_controller: Send ``get_controller`` automatically (default True).
@@ -57,8 +54,8 @@ class YarboCloudMqttClient(YarboLocalClient):
     def __init__(
         self,
         sn: str,
-        username: str = CLOUD_MQTT_DEFAULT_USERNAME,
-        password: str = CLOUD_MQTT_DEFAULT_PASSWORD,
+        username: str,
+        password: str,
         broker: str = CLOUD_BROKER,
         port: int = CLOUD_PORT_TLS,
         auto_controller: bool = True,
