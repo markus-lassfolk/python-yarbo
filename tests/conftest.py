@@ -39,8 +39,8 @@ def sample_sn() -> str:
 
 @pytest.fixture
 def sample_broker() -> str:
-    """Test broker IP."""
-    return "192.168.1.24"
+    """Test broker IP (example 192.168.0.0/16 range)."""
+    return "192.168.0.1"
 
 
 @pytest.fixture

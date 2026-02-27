@@ -6,7 +6,7 @@ Hybrid client — prefers local MQTT, falls back to cloud for account features.
 
 ```python
 YarboClient(
-    broker: str = "192.168.1.24",
+    broker: str = "",   # Required; use discover() or set <rover-ip>
     sn: str = "",
     port: int = 1883,
     username: str = "",          # Cloud only
@@ -42,7 +42,7 @@ YarboClient(
 ### Sync Factory
 
 ```python
-client = YarboClient.connect(broker="192.168.1.24", sn="...")
+client = YarboClient.connect(broker="<rover-ip>", sn="...")
 client.lights_on()
 client.disconnect()
 ```
@@ -115,7 +115,7 @@ class YarboTelemetry:
 robots = await discover_yarbo(
     timeout: float = 5.0,
     port: int = 1883,
-    subnet: str | None = None,   # e.g. "192.168.1.0/24"
+    subnet: str | None = None,   # optional; if omitted, host local networks are scanned
 ) -> list[DiscoveredRobot]
 ```
 

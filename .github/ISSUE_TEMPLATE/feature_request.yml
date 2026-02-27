@@ -42,7 +42,7 @@ body:
       render: python
       placeholder: |
         # Example:
-        async with YarboClient(broker="192.168.1.24", sn="...") as client:
+        async with YarboClient(broker="<rover-ip>", sn="...") as client:
             await client.start_plan("morning-route")
             async for event in client.watch_plan_events():
                 print(event.status)
