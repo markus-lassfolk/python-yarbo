@@ -94,7 +94,18 @@ Test (with robot on network; omit --broker/--sn to auto-discover)
 
 #: Key substrings that indicate a field may contain credentials; values are redacted.
 _SENSITIVE_KEYS: frozenset[str] = frozenset(
-    {"password", "passwd", "secret", "token", "api_key", "access_key", "credential", "auth_key"}
+    {
+        "password",
+        "passwd",
+        "secret",
+        "token",
+        "api_key",
+        "access_key",
+        "credential",
+        "auth_key",
+        "auth",
+        "key",
+    }
 )
 
 
@@ -407,6 +418,9 @@ async def _run_status(args: argparse.Namespace) -> None:
             else:
                 print("Error: connected but no telemetry received within timeout.")
                 sys.exit(1)
+        except TimeoutError:
+            print("Error: timeout waiting for status.")
+            sys.exit(1)
         finally:
             await client.disconnect()
         return

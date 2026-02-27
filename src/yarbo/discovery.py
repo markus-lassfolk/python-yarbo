@@ -463,7 +463,6 @@ async def discover(  # noqa: PLR0912, PLR0915
                 hostname=hostname,
                 sn=sn,
             )
-        return None
 
     results = await asyncio.gather(
         *(probe_one(ip) for ip in unique_candidates),
