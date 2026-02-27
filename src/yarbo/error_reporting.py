@@ -18,7 +18,8 @@ def init_error_reporting(
 ) -> None:
     """Initialize Sentry/GlitchTip error reporting.
 
-    Enabled by default (opt-out). To disable, set YARBO_SENTRY_DSN="" or pass enabled=False.
+    Opt-in: enable by providing a DSN via argument or environment variables.
+    To disable explicitly, pass enabled=False or set YARBO_SENTRY_DSN="".
 
     Args:
         dsn: Sentry DSN. If omitted, falls back to the ``YARBO_SENTRY_DSN`` or
