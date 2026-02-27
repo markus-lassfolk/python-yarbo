@@ -43,7 +43,7 @@ jobs:
         run: mypy src/yarbo/
 
   test:
-    name: Test (Python ${{ matrix.python-version }})
+    name: test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     needs: lint
     strategy:
