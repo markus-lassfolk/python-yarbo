@@ -101,7 +101,7 @@ def _get_local_subnets() -> list[str]:
     Detect IPv4 subnets of the host's network interfaces (no loopback).
 
     Uses platform-specific commands so no extra dependencies are required.
-    Returns a list of CIDR strings, e.g. ["192.168.1.0/24", "10.0.0.0/24"].
+    Returns a list of CIDR strings, e.g. ["192.0.2.0/24"].
     """
     seen: set[str] = set()
     out: list[str] = []

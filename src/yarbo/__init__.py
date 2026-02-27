@@ -33,7 +33,7 @@ Auto-discovery (optional subnet; if omitted, host local networks are scanned)::
     from yarbo import discover_yarbo, YarboClient
 
     async def main():
-        robots = await discover_yarbo()  # or discover_yarbo(subnet="192.168.1.0/24")
+        robots = await discover_yarbo()  # or discover_yarbo(subnet="192.0.2.0/24")
         if robots:
             async with YarboClient(broker=robots[0].broker_host, sn=robots[0].sn) as client:
                 await client.lights_on()

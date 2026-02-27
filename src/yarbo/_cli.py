@@ -112,7 +112,7 @@ def _add_connection_args(parser: argparse.ArgumentParser) -> None:
         "--subnet",
         type=str,
         default=None,
-        help="Subnet to scan when auto-discovering (e.g. 192.168.1.0/24).",
+        help="Subnet to scan when auto-discovering (e.g. 192.0.2.0/24).",
     )
     parser.add_argument(
         "--timeout",
@@ -182,7 +182,7 @@ def _main() -> None:
 
     # ----- Discovery -----
     discover_parser = subparsers.add_parser("discover", help="Find Yarbo brokers (Rover/DC) on the network.")
-    discover_parser.add_argument("--subnet", type=str, default=None, help="Subnet to scan (e.g. 192.168.1.0/24).")
+    discover_parser.add_argument("--subnet", type=str, default=None, help="Subnet to scan (e.g. 192.0.2.0/24).")
     discover_parser.add_argument("--timeout", type=float, default=5.0, help="Timeout per probe (default: 5).")
     discover_parser.add_argument("--port", type=int, default=1883, help="MQTT port (default: 1883).")
     discover_parser.add_argument("--max-hosts", type=int, default=512, metavar="N", help="Max hosts per subnet (default: 512).")

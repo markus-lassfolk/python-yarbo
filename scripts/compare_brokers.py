@@ -19,9 +19,9 @@ from yarbo.models import TelemetryEnvelope, YarboTelemetry
 from yarbo.mqtt import MqttTransport
 
 # Edit for your network or pass via CLI (use yarbo discover to find Rover/DC IPs).
-# Example 192.168.0.x range — replace with your Rover/DC IPs to compare two brokers.
+# Placeholder uses RFC 5737 documentation range; replace with your Rover/DC IPs.
 SN = "YOUR_SERIAL"
-BROKERS: list[str] = ["192.168.0.1", "192.168.0.2"]
+BROKERS: list[str] = ["192.0.2.1", "192.0.2.2"]
 LISTEN_SECONDS = 4.0
 
 

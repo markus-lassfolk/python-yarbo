@@ -24,15 +24,15 @@ class TestGetLocalSubnets:
 
     def test_linux_parses_ip_addr_output(self):
         """Linux: ip -4 -o addr show output is parsed to CIDRs."""
-        fake_stdout = "2: eth0    inet 192.168.1.10/24 brd 192.168.1.255 scope global eth0\n"
-        fake_stdout += "3: docker0    inet 172.17.0.1/16 brd 172.17.255.255 scope global docker0\n"
+        fake_stdout = "2: eth0    inet 192.0.2.10/24 brd 192.0.2.255 scope global eth0\n"
+        fake_stdout += "3: docker0    inet 198.51.100.1/24 brd 198.51.100.255 scope global docker0\n"
         with patch("sys.platform", "linux"), patch(
             "subprocess.run",
             return_value=MagicMock(returncode=0, stdout=fake_stdout),
         ):
             subnets = _get_local_subnets()
-        assert "192.168.1.0/24" in subnets
-        assert "172.17.0.0/16" in subnets
+        assert "192.0.2.0/24" in subnets
+        assert "198.51.100.0/24" in subnets
         assert len(subnets) == 2
 
     def test_loopback_excluded(self):
@@ -57,15 +57,15 @@ class TestExpandSubnet:
 
     def test_caps_large_subnet(self):
         """Subnet with more than max_hosts is capped; was_capped True."""
-        network = ipaddress.ip_network("192.168.1.0/24", strict=False)
+        network = ipaddress.ip_network("192.0.2.0/24", strict=False)
         ips, capped = _expand_subnet(network, max_hosts=3)
         assert len(ips) == 3
         assert capped is True
-        assert ips[0] == "192.168.1.1"
+        assert ips[0] == "192.0.2.1"
 
     def test_small_subnet_not_capped(self):
         """Subnet with fewer hosts than max_hosts returns all; was_capped False."""
-        network = ipaddress.ip_network("192.168.1.0/30", strict=False)
+        network = ipaddress.ip_network("192.0.2.0/30", strict=False)
         ips, capped = _expand_subnet(network, max_hosts=10)
         assert len(ips) == 2
         assert capped is False
@@ -89,15 +89,15 @@ class TestHostnameIndicatesDc:
 
 class TestConnectionOrder:
     def test_recommended_first(self):
-        a = YarboEndpoint("192.168.1.24", 1883, "rover", "", False, None, "")
-        b = YarboEndpoint("192.168.1.55", 1883, "dc", "", True, "YARBO", "SN1")
+        a = YarboEndpoint("192.0.2.24", 1883, "rover", "", False, None, "")
+        b = YarboEndpoint("192.0.2.55", 1883, "dc", "", True, "YARBO", "SN1")
         ordered = connection_order([a, b])
         assert ordered[0] is b
         assert ordered[1] is a
 
     def test_no_recommended_unchanged(self):
-        a = YarboEndpoint("192.168.1.24", 1883, "rover", "", False, None, "")
-        b = YarboEndpoint("192.168.1.55", 1883, "rover", "", False, None, "")
+        a = YarboEndpoint("192.0.2.24", 1883, "rover", "", False, None, "")
+        b = YarboEndpoint("192.0.2.55", 1883, "rover", "", False, None, "")
         ordered = connection_order([a, b])
         assert ordered == [a, b]
 
@@ -107,12 +107,12 @@ class TestConnectionOrder:
 
 class TestDiscoveredRobot:
     def test_repr_with_sn(self):
-        r = DiscoveredRobot(broker_host="192.168.0.1", broker_port=1883, sn="ABC123")
-        assert "192.168.0.1" in repr(r)
+        r = DiscoveredRobot(broker_host="192.0.2.1", broker_port=1883, sn="ABC123")
+        assert "192.0.2.1" in repr(r)
         assert "ABC123" in repr(r)
 
     def test_repr_without_sn(self):
-        r = DiscoveredRobot(broker_host="192.168.0.1", broker_port=1883)
+        r = DiscoveredRobot(broker_host="192.0.2.1", broker_port=1883)
         assert "1883" in repr(r)
 
 
@@ -125,7 +125,7 @@ class TestDiscoverYarbo:
 
     async def test_finds_broker(self):
         endpoint = YarboEndpoint(
-            ip="192.168.0.1",
+            ip="192.0.2.1",
             port=1883,
             path="rover",
             mac="c8:fe:0f:ff:74:56",
@@ -135,7 +135,7 @@ class TestDiscoverYarbo:
         )
         with patch("yarbo.discovery.discover", return_value=[endpoint]):
             result = await discover_yarbo(timeout=0.5)
-            assert any(r.broker_host == "192.168.0.1" for r in result)
+            assert any(r.broker_host == "192.0.2.1" for r in result)
             assert result[0].sn == "XYZ"
 
     async def test_empty_when_none_found(self):
@@ -158,7 +158,7 @@ class TestDiscoverYarbo:
             return (None, writer)
 
         with (
-            patch("yarbo.discovery._get_local_subnets", return_value=["192.168.1.0/30"]),
+            patch("yarbo.discovery._get_local_subnets", return_value=["192.0.2.0/30"]),
             patch("yarbo.discovery.asyncio.open_connection", side_effect=fake_connection),
             patch("yarbo.discovery._verify_yarbo_heartbeat", side_effect=record_heartbeat),
             patch("yarbo.discovery._get_mac_for_ip", return_value=""),

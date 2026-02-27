@@ -19,9 +19,9 @@ Usage::
     client.lights_on()
     client.disconnect()
 
-    # Auto-discovery (pass subnet if needed: discover_yarbo(subnet="192.168.1.0/24"))
+    # Auto-discovery (pass subnet if needed: discover_yarbo(subnet="192.0.2.0/24"))
     from yarbo import discover_yarbo
-    robots = await discover_yarbo(subnet="192.168.1.0/24")
+    robots = await discover_yarbo(subnet="192.0.2.0/24")
     if robots:
         async with YarboClient(broker=robots[0].broker_host, sn=robots[0].sn) as client:
             await client.lights_on()
