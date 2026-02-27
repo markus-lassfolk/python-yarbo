@@ -586,7 +586,7 @@ class YarboTelemetry:
             machine_controller=state_msg.get("machine_controller") if state_msg else None,
             name=d.get("name") or (head_msg.get("name") if head_msg else None),
             head_serial_number=(
-                head_msg.get("sn") or head_msg.get("serial_number") if head_msg else None
+                (head_msg.get("sn") or head_msg.get("serial_number")) if head_msg else None
             )
             or d.get("head_sn"),
             battery_status=battery_msg.get("status") if battery_msg else d.get("battery_status"),
