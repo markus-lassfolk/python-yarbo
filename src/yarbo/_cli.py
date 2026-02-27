@@ -698,7 +698,7 @@ async def _run_global_params(args: argparse.Namespace) -> None:
 
 async def _run_map(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
-        data = await asyncio.wait_for(client.get_map(), timeout=10.0)
+        data = await asyncio.wait_for(client.get_map(), timeout=args.timeout)
         out = getattr(args, "out", None)
         s = json.dumps(data, indent=2)
         if out:
