@@ -451,6 +451,7 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
     # Order and labels aligned with PowerShell / app for consistency
     fields = [
         ("SerialNumber", status.sn or sn),
+        ("BrokerIP", ip),
         ("Name", status.name),
         ("HeadType", status.head_type),
         ("BatteryCapacity", status.battery),
