@@ -75,12 +75,14 @@ class YarboCloudMqttClient(YarboLocalClient):
         self,
         sn: str,
         username: str = CLOUD_MQTT_DEFAULT_USERNAME,
-        password: str = CLOUD_MQTT_DEFAULT_PASSWORD,
+        password: str | None = None,
         broker: str = CLOUD_BROKER,
         port: int = CLOUD_PORT_TLS,
         auto_controller: bool = True,
         tls_ca_certs: str | None = None,
     ) -> None:
+        if password is None:
+            password = os.environ.get("YARBO_MQTT_PASSWORD", "")
         if not password:
             raise ValueError(
                 "YarboCloudMqttClient requires a password. "
