@@ -57,12 +57,15 @@ def _parse_linux_subnets(stdout: str) -> list[str]:
 def _parse_darwin_subnets(stdout: str) -> list[str]:
     """Parse macOS/BSD ifconfig output into CIDR strings."""
     cidrs: list[str] = []
-    for block in stdout.split("\n\n"):
-        inet = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)(?:/(\d+))?", block)
-        if not inet:
-            continue
+    for inet in re.finditer(r"inet\s+(\d+\.\d+\.\d+\.\d+)(?:/(\d+))?", stdout):
         addr, prefix = inet.group(1), inet.group(2)
         if not prefix:
+            start_pos = inet.start()
+            line_start = stdout.rfind("\n", 0, start_pos) + 1
+            line_end = stdout.find("\n\n", start_pos)
+            if line_end == -1:
+                line_end = len(stdout)
+            block = stdout[line_start:line_end]
             netmask = re.search(r"netmask\s+0x([0-9a-fA-F]+)", block)
             if not netmask:
                 continue
@@ -91,7 +94,6 @@ def _parse_windows_subnets(stdout: str) -> list[str]:
                     except ValueError:
                         pass
                     break
-            i += 1
         i += 1
     return cidrs
 
