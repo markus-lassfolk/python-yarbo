@@ -17,6 +17,29 @@ from dataclasses import dataclass, field
 import enum
 from typing import Any
 
+
+def flatten_mqtt_payload(payload: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+    """
+    Flatten a nested MQTT payload into dotted keys so every value is visible.
+
+    Example: ``{"BatteryMSG": {"capacity": 100}}`` -> ``{"BatteryMSG.capacity": 100}``.
+    Lists are indexed: ``{"x": [1, 2]}`` -> ``{"x.0": 1, "x.1": 2}``.
+    """
+    out: dict[str, Any] = {}
+    for k, v in payload.items():
+        key = f"{prefix}.{k}" if prefix else k
+        if isinstance(v, dict) and v:
+            out.update(flatten_mqtt_payload(v, key))
+        elif isinstance(v, list):
+            for i, item in enumerate(v):
+                if isinstance(item, dict):
+                    out.update(flatten_mqtt_payload(item, f"{key}.{i}"))
+                else:
+                    out[f"{key}.{i}"] = item
+        else:
+            out[key] = v
+    return out
+
 # ---------------------------------------------------------------------------
 # Head type enum
 # ---------------------------------------------------------------------------
@@ -334,6 +357,40 @@ class YarboTelemetry:
     machine_controller: int | None = None
     """Active controller identifier. Source: ``StateMSG.machine_controller``."""
 
+    # Extra fields (align with PowerShell / app display)
+    name: str | None = None
+    """Robot display name."""
+
+    head_serial_number: str | None = None
+    """Attachment head serial number. Source: ``HeadMsg.sn`` or similar."""
+
+    battery_status: int | None = None
+    """Battery status from ``BatteryMSG.status`` (e.g. charge state)."""
+
+    rtk_status: str | None = None
+    """RTK status string. Source: ``RTKMSG.status`` (e.g. ``"4"`` = fixed)."""
+
+    chute_angle: int | float | None = None
+    """Chute angle/position (snow blower)."""
+
+    odom_confidence: int | float | None = None
+    """Odometry confidence. Source: ``CombinedOdom.confidence`` or similar."""
+
+    car_controller: bool | None = None
+    """True if app/car has controller role. Source: ``StateMSG.car_controller`` or similar."""
+
+    wireless_charge_voltage: float | None = None
+    """Wireless charging voltage (when docked)."""
+
+    wireless_charge_current: float | None = None
+    """Wireless charging current (when docked)."""
+
+    route_priority: str | int | None = None
+    """Route priority or current route info."""
+
+    last_updated: float | None = None
+    """Payload timestamp (seconds since epoch). Source: ``timestamp`` or ``BatteryMSG.timestamp``."""
+
     # Plan feedback fields (merged from plan_feedback topic)
     plan_id: str | None = None
     """Active plan UUID. Populated from ``plan_feedback`` messages."""
@@ -362,6 +419,15 @@ class YarboTelemetry:
 
     raw: dict[str, Any] = field(default_factory=dict)
     """Complete raw DeviceMSG dict."""
+
+    def all_mqtt_values(self) -> dict[str, Any]:
+        """
+        Return every MQTT payload key-value as a flat dict with dotted keys.
+
+        Use this to see or iterate over every value the device sent, including
+        keys we do not yet parse into named fields.
+        """
+        return flatten_mqtt_payload(self.raw)
 
     @property
     def head_name(self) -> str:
@@ -468,6 +534,9 @@ class YarboTelemetry:
         def _optional_bool(v: object) -> bool | None:
             return bool(v) if v is not None else None
 
+        def _str_or_none(v: object) -> str | None:
+            return str(v) if v is not None else None
+
         on_going_planning: bool | None = (
             _optional_bool(state_msg.get("on_going_planning")) if state_msg else None
         )
@@ -485,6 +554,13 @@ class YarboTelemetry:
         gps_lat, gps_lon, gps_alt, gps_fix = (
             _parse_gngga(gngga_sentence) if gngga_sentence else (None, None, None, 0)
         )
+
+        # Timestamp: top-level or from BatteryMSG/RTKMSG
+        last_updated: float | None = d.get("timestamp")
+        if last_updated is None and battery_msg:
+            last_updated = battery_msg.get("timestamp")
+        if last_updated is None and rtk_msg:
+            last_updated = rtk_msg.get("timestamp")
 
         return cls(
             sn=sn,
@@ -504,6 +580,29 @@ class YarboTelemetry:
             on_going_recharging=on_going_recharging,
             planning_paused=planning_paused,
             machine_controller=state_msg.get("machine_controller") if state_msg else None,
+            name=d.get("name") or (head_msg.get("name") if head_msg else None),
+            head_serial_number=(
+                head_msg.get("sn") or head_msg.get("serial_number") if head_msg else None
+            )
+            or d.get("head_sn"),
+            battery_status=battery_msg.get("status") if battery_msg else d.get("battery_status"),
+            rtk_status=_str_or_none(rtk_msg.get("status") if rtk_msg else d.get("rtk_status")),
+            chute_angle=state_msg.get("chute_angle") if state_msg else d.get("chute_angle"),
+            odom_confidence=odom.get("confidence") if odom else d.get("odom_confidence"),
+            car_controller=_optional_bool(
+                state_msg.get("car_controller") if state_msg else d.get("car_controller")
+            ),
+            wireless_charge_voltage=(
+                battery_msg.get("wireless_charge_voltage") if battery_msg else None
+            )
+            or d.get("wireless_charge_voltage"),
+            wireless_charge_current=(
+                battery_msg.get("wireless_charge_current") if battery_msg else None
+            )
+            or d.get("wireless_charge_current"),
+            route_priority=d.get("route_priority")
+            or (state_msg.get("route_priority") if state_msg else None),
+            last_updated=last_updated,
             latitude=gps_lat,
             longitude=gps_lon,
             altitude=gps_alt,

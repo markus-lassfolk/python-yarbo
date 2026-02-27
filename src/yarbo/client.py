@@ -7,21 +7,21 @@ that require it (robot binding, account management, etc.).
 
 Usage::
 
-    # Async context manager
-    async with YarboClient(broker="192.168.1.24", sn="24400102L8HO5227") as client:
+    # Async context manager (broker from discover() or your rover/DC IP)
+    async with YarboClient(broker="<rover-ip>", sn="YOUR_SERIAL") as client:
         status = await client.get_status()
         await client.lights_on()
         async for telemetry in client.watch_telemetry():
             print(f"Battery: {telemetry.battery}%")
 
     # Sync wrapper
-    client = YarboClient.connect(broker="192.168.1.24", sn="24400102L8HO5227")
+    client = YarboClient.connect(broker="<rover-ip>", sn="YOUR_SERIAL")
     client.lights_on()
     client.disconnect()
 
-    # Auto-discovery
+    # Auto-discovery (pass subnet if needed: discover_yarbo(subnet="192.168.1.0/24"))
     from yarbo import discover_yarbo
-    robots = await discover_yarbo()
+    robots = await discover_yarbo(subnet="192.168.1.0/24")
     if robots:
         async with YarboClient(broker=robots[0].broker_host, sn=robots[0].sn) as client:
             await client.lights_on()
@@ -77,7 +77,7 @@ class YarboClient:
     :class:`~yarbo.local.YarboLocalClient`.
 
     Args:
-        broker:    Local MQTT broker IP address.
+        broker:    Local MQTT broker IP (from discover() or set explicitly; no default).
         sn:        Robot serial number.
         port:      MQTT broker port (default 1883).
         username:  Cloud account email (optional — for cloud REST features only).
@@ -370,7 +370,7 @@ class YarboClient:
 
         Example::
 
-            client = YarboClient.connect_sync(broker="192.168.1.24", sn="24400102...")
+            client = YarboClient.connect_sync(broker="<rover-ip>", sn="YOUR_SERIAL")
             client.lights_on()
             client.disconnect()
         """

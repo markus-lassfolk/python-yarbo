@@ -11,7 +11,7 @@ Quick start (async)::
     from yarbo import YarboClient
 
     async def main():
-        async with YarboClient(broker="192.168.1.24", sn="24400102L8HO5227") as client:
+        async with YarboClient(broker="<rover-ip>", sn="YOUR_SERIAL") as client:
             status = await client.get_status()
             print(f"Battery: {status.battery}%")
             await client.lights_on()
@@ -23,22 +23,35 @@ Quick start (sync)::
 
     from yarbo import YarboClient
 
-    client = YarboClient.connect(broker="192.168.1.24", sn="24400102L8HO5227")
+    client = YarboClient.connect(broker="<rover-ip>", sn="YOUR_SERIAL")
     client.lights_on()
     client.disconnect()
 
-Auto-discovery::
+Auto-discovery (optional subnet; if omitted, host local networks are scanned)::
 
     import asyncio
     from yarbo import discover_yarbo, YarboClient
 
     async def main():
-        robots = await discover_yarbo()
+        robots = await discover_yarbo()  # or discover_yarbo(subnet="192.168.1.0/24")
         if robots:
             async with YarboClient(broker=robots[0].broker_host, sn=robots[0].sn) as client:
                 await client.lights_on()
 
     asyncio.run(main())
+
+Primary/fallback (e.g. Home Assistant): use connection_order() and try each broker
+until one connects::
+
+    from yarbo import discover, connection_order, YarboClient
+    endpoints = await discover()
+    for ep in connection_order(endpoints):
+        try:
+            async with YarboClient(broker=ep.ip, sn=ep.sn) as client:
+                await client.lights_on()
+            break
+        except Exception:
+            continue  # try next endpoint
 
 See README.md for full documentation.
 """
@@ -54,7 +67,13 @@ from .client import YarboClient
 from .cloud import YarboCloudClient
 from .cloud_mqtt import YarboCloudMqttClient
 from .const import Topic
-from .discovery import DiscoveredRobot, discover_yarbo
+from .discovery import (
+    DiscoveredRobot,
+    YarboEndpoint,
+    connection_order,
+    discover,
+    discover_yarbo,
+)
 from .error_reporting import init_error_reporting
 from .exceptions import (
     YarboAuthError,
@@ -89,6 +108,9 @@ __all__ = [  # noqa: RUF022 — grouped by category, alphabetical within each
     "init_error_reporting",
     # Discovery
     "DiscoveredRobot",
+    "YarboEndpoint",
+    "connection_order",
+    "discover",
     "discover_yarbo",
     # Topic helper
     "Topic",

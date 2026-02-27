@@ -70,7 +70,7 @@ class MqttTransport:
 
     Example::
 
-        transport = MqttTransport(broker="192.168.1.24", sn="24400102L8HO5227")
+        transport = MqttTransport(broker="<rover-ip>", sn="YOUR_SERIAL")
         await transport.connect()
         await transport.publish("get_controller", {})
         await transport.publish("light_ctrl", {"led_head": 255, "led_left_w": 255})
