@@ -33,7 +33,7 @@ jobs:
 
       - name: Run pip-audit
         run: |
-          pip freeze | grep -v "python-yarbo" > requirements-audit.txt
+          pip freeze | grep -v "^python-yarbo" > requirements-audit.txt || true
           pip-audit -r requirements-audit.txt --strict
 
   bandit:
