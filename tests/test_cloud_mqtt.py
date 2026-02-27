@@ -48,20 +48,14 @@ def mock_transport_cloud():
         yield instance, MockT
 
 
-def test_password_default_from_env(monkeypatch):
-    """YARBO_MQTT_PASSWORD env var sets CLOUD_MQTT_DEFAULT_PASSWORD at import time."""
-    import importlib  # noqa: PLC0415
-
+def test_password_default_from_env(monkeypatch, mock_transport_cloud):
+    """YARBO_MQTT_PASSWORD should be read at construction time when omitted."""
     monkeypatch.setenv("YARBO_MQTT_PASSWORD", _TEST_PASSWORD)
-    import yarbo.cloud_mqtt as cm  # noqa: PLC0415
+    _, mock_t = mock_transport_cloud
 
-    importlib.reload(cm)
-    try:
-        assert cm.CLOUD_MQTT_DEFAULT_PASSWORD == _TEST_PASSWORD
-    finally:
-        # Reload without the env var to restore the module to a clean state.
-        monkeypatch.delenv("YARBO_MQTT_PASSWORD", raising=False)
-        importlib.reload(cm)
+    YarboCloudMqttClient(sn="TESTSN")
+    kwargs = mock_t.call_args[1]
+    assert kwargs["password"] == _TEST_PASSWORD
 
 
 @pytest.mark.asyncio
@@ -74,11 +68,19 @@ class TestYarboCloudMqttClientDefaults:
         assert kwargs["port"] == CLOUD_PORT_TLS
 
     async def test_default_username(self, mock_transport_cloud):
-        """Username should default to CLOUD_MQTT_DEFAULT_USERNAME (env or 'hytech')."""
+        """Username should default to CLOUD_MQTT_DEFAULT_USERNAME when env is unset."""
         _, mock_t = mock_transport_cloud
         YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD)
         kwargs = mock_t.call_args[1]
         assert kwargs["username"] == CLOUD_MQTT_DEFAULT_USERNAME
+
+    async def test_username_default_from_env(self, monkeypatch, mock_transport_cloud):
+        """YARBO_MQTT_USERNAME should be read at construction time when omitted."""
+        monkeypatch.setenv("YARBO_MQTT_USERNAME", "env-user")
+        _, mock_t = mock_transport_cloud
+        YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD)
+        kwargs = mock_t.call_args[1]
+        assert kwargs["username"] == "env-user"
 
     async def test_empty_password_raises(self, mock_transport_cloud):
         """Empty password must raise ValueError — no silent unauthenticated connections."""
