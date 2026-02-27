@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 import json
 import logging
@@ -159,7 +160,7 @@ def _add_connection_args(parser: argparse.ArgumentParser) -> None:
         default=None,
         metavar="FILE",
         dest="log_mqtt",
-        help="Append every raw MQTT message (topic + payload JSON) to FILE for comparison with CLI output.",
+        help="Append every raw MQTT message (topic + payload JSON) to FILE.",
     )
 
 
@@ -202,17 +203,15 @@ async def _with_client(
                 mqtt_log_path=getattr(args, "log_mqtt", None),
             )
             await client.connect()
-            try:
-                yield (client, ep.ip)
-                return
-            finally:
-                try:
-                    await client.disconnect()
-                except Exception:
-                    pass
         except (YarboError, OSError, TimeoutError) as e:
             last_err = e
             continue
+        try:
+            yield (client, ep.ip)
+            return
+        finally:
+            with contextlib.suppress(Exception):
+                await client.disconnect()
     raise SystemExit(f"All endpoints failed. Last error: {last_err}")
 
 
@@ -399,7 +398,7 @@ async def _run_discover(args: argparse.Namespace) -> None:
     )
     if not endpoints:
         print("No Yarbo endpoints found.")
-        return
+        sys.exit(1)
     col_ip = max(len(e.ip) for e in endpoints) + 1
     col_port, col_path, col_mac = 6, 6, max(len(e.mac or "(no MAC)") for e in endpoints) + 1
     col_rec, col_sn = 2, max(len(e.sn or "-") for e in endpoints) + 1
@@ -540,7 +539,7 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
     all_mqtt = status.all_mqtt_values()
     if all_mqtt:
         print()
-        print("  Data coverage: All keys from the DeviceMSG payload are listed below; nothing is dropped.")
+        print("  Data coverage: All MQTT keys from DeviceMSG payload are listed; nothing dropped.")
         print("  --- All MQTT keys (from DeviceMSG payload) ---")
         for k in sorted(all_mqtt.keys()):
             if _is_sensitive_key(k):
