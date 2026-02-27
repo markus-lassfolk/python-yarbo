@@ -35,7 +35,9 @@ def flatten_mqtt_payload(payload: dict[str, Any], prefix: str = "") -> dict[str,
                 out[key] = v
             else:
                 for i, item in enumerate(v):
-                    if isinstance(item, dict):
+                    # Recurse into non-empty dicts; store empty dicts and scalars directly
+                    # so that {} inside lists is emitted as key.<i>={} rather than dropped.
+                    if isinstance(item, dict) and item:
                         out.update(flatten_mqtt_payload(item, f"{key}.{i}"))
                     else:
                         out[f"{key}.{i}"] = item
@@ -393,7 +395,10 @@ class YarboTelemetry:
     """Route priority or current route info."""
 
     last_updated: float | None = None
-    """Payload timestamp (seconds since epoch). Source: ``timestamp`` or ``BatteryMSG.timestamp``."""
+    """Payload timestamp (seconds since epoch).
+
+    Source: ``timestamp`` or ``BatteryMSG.timestamp``.
+    """
 
     # Plan feedback fields (merged from plan_feedback topic)
     plan_id: str | None = None
