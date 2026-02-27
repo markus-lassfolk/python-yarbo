@@ -27,8 +27,9 @@ import sys
 
 logger = logging.getLogger(__name__)
 
-#: Maximum simultaneous broker probes during subnet scanning.
-_SCAN_CONCURRENCY = 50
+# Lower concurrency limits thread pressure: each _verify_yarbo_heartbeat call starts a paho
+# loop thread. At 50 concurrent probes that is up to 50 threads; 20 keeps pressure manageable.
+_SCAN_CONCURRENCY = 20
 
 #: Default cap on hosts scanned per subnet; use discover(max_hosts=N) or --max-hosts to increase.
 DEFAULT_MAX_HOSTS_PER_SUBNET = 512
@@ -189,7 +190,10 @@ def is_dc_endpoint(mac: str) -> bool:
 
 
 def _hostname_indicates_dc(hostname: str | None) -> bool:
-    """True if hostname suggests a DC (e.g. contains 'YARBO'). Used when ARP gives same MAC for both."""
+    """True if hostname suggests a DC (e.g. contains 'YARBO').
+
+    Used as a fallback when ARP gives the same MAC for both endpoints.
+    """
     if not hostname:
         return False
     return DC_HOSTNAME_HINT.upper() in hostname.upper()
@@ -357,7 +361,7 @@ def _expand_subnet(
     return (ips, True)
 
 
-async def discover(
+async def discover(  # noqa: PLR0912, PLR0915
     timeout: float = 5.0,
     port: int = 1883,
     subnet: str | None = None,
@@ -400,7 +404,8 @@ async def discover(
                 network = ipaddress.ip_network(net_cidr, strict=False)
                 if network.prefixlen < MIN_PREFIXLEN_AUTO:
                     logger.debug(
-                        "Skipping large subnet %s (/%d); typical of Docker/containers. Use --subnet to scan it.",
+                        "Skipping large subnet %s (/%d); typical of Docker/containers."
+                        " Use --subnet to scan it.",
                         net_cidr,
                         network.prefixlen,
                     )
@@ -434,14 +439,8 @@ async def discover(
 
     async def probe_one(ip: str) -> YarboEndpoint | None:
         async with semaphore:
-            try:
-                _, writer = await asyncio.wait_for(
-                    asyncio.open_connection(ip, port), timeout=min(timeout, 1.5)
-                )
-                writer.close()
-                await writer.wait_closed()
-            except (TimeoutError, OSError):
-                return None
+            # MQTT heartbeat check already opens its own connection; no separate TCP probe
+            # is needed (it would just add a second connection per candidate).
             is_yarbo, sn = await _verify_yarbo_heartbeat(ip, port, timeout)
             if not is_yarbo:
                 return None

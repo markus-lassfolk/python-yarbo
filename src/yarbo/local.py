@@ -94,6 +94,11 @@ class YarboLocalClient:
         port: int = LOCAL_PORT,
         auto_controller: bool = True,
     ) -> None:
+        if not broker:
+            raise ValueError(
+                "broker IP must be set to the robot's EMQX broker address; "
+                "use yarbo.discovery.discover() to find it automatically."
+            )
         self._broker = broker
         self._sn = sn
         self._port = port

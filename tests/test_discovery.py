@@ -25,10 +25,15 @@ class TestGetLocalSubnets:
     def test_linux_parses_ip_addr_output(self):
         """Linux: ip -4 -o addr show output is parsed to CIDRs."""
         fake_stdout = "2: eth0    inet 192.0.2.10/24 brd 192.0.2.255 scope global eth0\n"
-        fake_stdout += "3: docker0    inet 198.51.100.1/24 brd 198.51.100.255 scope global docker0\n"
-        with patch("sys.platform", "linux"), patch(
-            "subprocess.run",
-            return_value=MagicMock(returncode=0, stdout=fake_stdout),
+        fake_stdout += (
+            "3: docker0    inet 198.51.100.1/24 brd 198.51.100.255 scope global docker0\n"
+        )
+        with (
+            patch("sys.platform", "linux"),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(returncode=0, stdout=fake_stdout),
+            ),
         ):
             subnets = _get_local_subnets()
         assert "192.0.2.0/24" in subnets
@@ -38,9 +43,12 @@ class TestGetLocalSubnets:
     def test_loopback_excluded(self):
         """127.0.0.0/8 is never returned."""
         fake_stdout = "1: lo    inet 127.0.0.1/8 scope host lo\n"
-        with patch("sys.platform", "linux"), patch(
-            "subprocess.run",
-            return_value=MagicMock(returncode=0, stdout=fake_stdout),
+        with (
+            patch("sys.platform", "linux"),
+            patch(
+                "subprocess.run",
+                return_value=MagicMock(returncode=0, stdout=fake_stdout),
+            ),
         ):
             subnets = _get_local_subnets()
         assert not any("127." in s for s in subnets)

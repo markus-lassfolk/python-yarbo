@@ -10,15 +10,19 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from datetime import UTC, datetime
 import json
+import logging
+from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, Any
 
+from yarbo.discovery import connection_order, discover
+from yarbo.exceptions import YarboError
+from yarbo.local import YarboLocalClient
+
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
-
-    from yarbo.discovery import YarboEndpoint
-    from yarbo.local import YarboLocalClient
 
 _CLI_EPILOG = """
 Commands (grouped)
@@ -66,6 +70,7 @@ Connection (optional; omit to auto-discover)
   --port PORT   MQTT port (default: 1883).
   --subnet CIDR Subnet to scan when discovering.
   --timeout N   Timeout in seconds (default: 5).
+  --max-hosts N Max hosts per subnet (default: 512).
 
 Test (with robot on network; omit --broker/--sn to auto-discover)
   yarbo discover
@@ -86,6 +91,17 @@ Test (with robot on network; omit --broker/--sn to auto-discover)
   yarbo velocity --linear 0.5
   yarbo manual-stop
 """
+
+#: Key substrings that indicate a field may contain credentials; values are redacted.
+_SENSITIVE_KEYS: frozenset[str] = frozenset(
+    {"password", "passwd", "secret", "token", "api_key", "access_key", "credential", "auth_key"}
+)
+
+
+def _is_sensitive_key(k: str) -> bool:
+    """Return True if the dotted key name suggests it contains credentials."""
+    k_lower = k.lower()
+    return any(s in k_lower for s in _SENSITIVE_KEYS)
 
 
 def _add_connection_args(parser: argparse.ArgumentParser) -> None:
@@ -120,16 +136,19 @@ def _add_connection_args(parser: argparse.ArgumentParser) -> None:
         default=5.0,
         help="Timeout in seconds (default: 5).",
     )
+    parser.add_argument(
+        "--max-hosts",
+        type=int,
+        default=512,
+        metavar="N",
+        help="Max hosts per subnet when auto-discovering (default: 512).",
+    )
 
 
 async def _with_client(
     args: argparse.Namespace,
 ) -> AsyncIterator[tuple[YarboLocalClient, str | None]]:
     """Yield (connected client, endpoint_ip_or_none). Disconnects on exit."""
-    from yarbo.discovery import connection_order, discover
-    from yarbo.exceptions import YarboError
-    from yarbo.local import YarboLocalClient
-
     if getattr(args, "broker", None) and getattr(args, "serial", None):
         client = YarboLocalClient(
             broker=args.broker,
@@ -147,9 +166,12 @@ async def _with_client(
         timeout=getattr(args, "timeout", 5.0),
         port=getattr(args, "port", 1883),
         subnet=getattr(args, "subnet", None),
+        max_hosts=getattr(args, "max_hosts", 512),
     )
     if not endpoints:
-        raise SystemExit("No Yarbo endpoints found. Use --broker and --sn or run on a network with a robot.")
+        raise SystemExit(
+            "No Yarbo endpoints found. Use --broker and --sn or run on a network with a robot."
+        )
     ordered = connection_order(endpoints)
     last_err: Exception | None = None
     for ep in ordered:
@@ -161,13 +183,13 @@ async def _with_client(
                 return
             finally:
                 await client.disconnect()
-        except (YarboError, OSError, TimeoutError, asyncio.TimeoutError) as e:
+        except (YarboError, OSError, TimeoutError) as e:
             last_err = e
             continue
     raise SystemExit(f"All endpoints failed. Last error: {last_err}")
 
 
-def _main() -> None:
+def _main() -> None:  # noqa: PLR0915
     parser = argparse.ArgumentParser(
         prog="yarbo",
         description="Yarbo robot local and cloud control (MQTT).",
@@ -181,20 +203,38 @@ def _main() -> None:
     )
 
     # ----- Discovery -----
-    discover_parser = subparsers.add_parser("discover", help="Find Yarbo brokers (Rover/DC) on the network.")
-    discover_parser.add_argument("--subnet", type=str, default=None, help="Subnet to scan (e.g. 192.0.2.0/24).")
-    discover_parser.add_argument("--timeout", type=float, default=5.0, help="Timeout per probe (default: 5).")
-    discover_parser.add_argument("--port", type=int, default=1883, help="MQTT port (default: 1883).")
-    discover_parser.add_argument("--max-hosts", type=int, default=512, metavar="N", help="Max hosts per subnet (default: 512).")
+    discover_parser = subparsers.add_parser(
+        "discover", help="Find Yarbo brokers (Rover/DC) on the network."
+    )
+    discover_parser.add_argument(
+        "--subnet", type=str, default=None, help="Subnet to scan (e.g. 192.0.2.0/24)."
+    )
+    discover_parser.add_argument(
+        "--timeout", type=float, default=5.0, help="Timeout per probe (default: 5)."
+    )
+    discover_parser.add_argument(
+        "--port", type=int, default=1883, help="MQTT port (default: 1883)."
+    )
+    discover_parser.add_argument(
+        "--max-hosts",
+        type=int,
+        default=512,
+        metavar="N",
+        help="Max hosts per subnet (default: 512).",
+    )
 
-    status_parser = subparsers.add_parser("status", help="Connect (primary/fallback) and print robot status.")
+    status_parser = subparsers.add_parser(
+        "status", help="Connect (primary/fallback) and print robot status."
+    )
     _add_connection_args(status_parser)
 
     # ----- Status & telemetry -----
     battery_parser = subparsers.add_parser("battery", help="Print battery percentage.")
     _add_connection_args(battery_parser)
 
-    telemetry_parser = subparsers.add_parser("telemetry", help="Stream live telemetry (Ctrl+C to stop).")
+    telemetry_parser = subparsers.add_parser(
+        "telemetry", help="Stream live telemetry (Ctrl+C to stop)."
+    )
     _add_connection_args(telemetry_parser)
 
     # ----- Control -----
@@ -208,9 +248,16 @@ def _main() -> None:
     _add_connection_args(buzzer_parser)
     buzzer_parser.add_argument("--stop", action="store_true", help="Stop buzzer.")
 
-    chute_parser = subparsers.add_parser("chute", help="Set chute direction (snow blower): --vel N.")
+    chute_parser = subparsers.add_parser(
+        "chute", help="Set chute direction (snow blower): --vel N."
+    )
     _add_connection_args(chute_parser)
-    chute_parser.add_argument("--vel", type=int, required=True, help="Chute velocity (positive=right, negative=left).")
+    chute_parser.add_argument(
+        "--vel",
+        type=int,
+        required=True,
+        help="Chute velocity (positive=right, negative=left).",
+    )
 
     return_parser = subparsers.add_parser("return-to-dock", help="Send robot to charging dock.")
     _add_connection_args(return_parser)
@@ -243,7 +290,9 @@ def _main() -> None:
     velocity_parser = subparsers.add_parser("velocity", help="Set velocity (manual mode).")
     _add_connection_args(velocity_parser)
     velocity_parser.add_argument("--linear", type=float, required=True, help="Linear velocity.")
-    velocity_parser.add_argument("--angular", type=float, default=0.0, help="Angular velocity (default: 0).")
+    velocity_parser.add_argument(
+        "--angular", type=float, default=0.0, help="Angular velocity (default: 0)."
+    )
 
     roller_parser = subparsers.add_parser("roller", help="Set roller speed.")
     _add_connection_args(roller_parser)
@@ -260,12 +309,16 @@ def _main() -> None:
     )
 
     # ----- Other -----
-    global_params_parser = subparsers.add_parser("global-params", help="Get global parameters (JSON).")
+    global_params_parser = subparsers.add_parser(
+        "global-params", help="Get global parameters (JSON)."
+    )
     _add_connection_args(global_params_parser)
 
     map_parser = subparsers.add_parser("map", help="Get map data (JSON).")
     _add_connection_args(map_parser)
-    map_parser.add_argument("--out", type=str, default=None, help="Write to file (default: stdout).")
+    map_parser.add_argument(
+        "--out", type=str, default=None, help="Write to file (default: stdout)."
+    )
 
     args = parser.parse_args()
 
@@ -306,9 +359,6 @@ def _main() -> None:
 
 # ----- Discovery (no client) -----
 async def _run_discover(args: argparse.Namespace) -> None:
-    import logging
-    from yarbo.discovery import discover
-
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     if args.subnet:
         print(f"Scanning {args.subnet} for Yarbo brokers...")
@@ -326,24 +376,26 @@ async def _run_discover(args: argparse.Namespace) -> None:
     col_ip = max(len(e.ip) for e in endpoints) + 1
     col_port, col_path, col_mac = 6, 6, max(len(e.mac or "(no MAC)") for e in endpoints) + 1
     col_rec, col_sn = 2, max(len(e.sn or "-") for e in endpoints) + 1
-    fmt = f"{{:<{col_ip}}} {{:<{col_port}}} {{:<{col_path}}} {{:<{col_mac}}} {{:<{col_rec}}} {{:<{col_sn}}}{{}}"
+    fmt = (
+        f"{{:<{col_ip}}} {{:<{col_port}}} {{:<{col_path}}} "
+        f"{{:<{col_mac}}} {{:<{col_rec}}} {{:<{col_sn}}}{{}}"
+    )
     print(fmt.format("IP", "PORT", "PATH", "MAC", "", "SN", ""))
     print("-" * (col_ip + col_port + col_path + col_mac + col_rec + col_sn + 20))
     for e in endpoints:
         rec = "*" if e.recommended else ""
         hostname = f" ({e.hostname})" if e.hostname else ""
-        print(fmt.format(e.ip, str(e.port), e.path.upper(), e.mac or "(no MAC)", rec, e.sn or "-", hostname))
+        print(
+            fmt.format(
+                e.ip, str(e.port), e.path.upper(), e.mac or "(no MAC)", rec, e.sn or "-", hostname
+            )
+        )
     if any(e.recommended for e in endpoints):
         print("\n* = recommended (prefer this endpoint when robot may be out of WiFi range)")
 
 
 # ----- Status (with fallback) -----
 async def _run_status(args: argparse.Namespace) -> None:
-    import logging
-    from yarbo.discovery import connection_order, discover
-    from yarbo.exceptions import YarboError
-    from yarbo.local import YarboLocalClient
-
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     if args.broker and args.serial:
         client = YarboLocalClient(broker=args.broker, sn=args.serial, port=args.port)
@@ -353,12 +405,18 @@ async def _run_status(args: argparse.Namespace) -> None:
             if status:
                 _print_status(status, args.broker, args.serial)
             else:
-                print("Connected but no telemetry received.")
+                print("Error: connected but no telemetry received within timeout.")
+                sys.exit(1)
         finally:
             await client.disconnect()
         return
     print("Discovering...")
-    endpoints = await discover(timeout=args.timeout, port=args.port, subnet=args.subnet)
+    endpoints = await discover(
+        timeout=args.timeout,
+        port=args.port,
+        subnet=args.subnet,
+        max_hosts=args.max_hosts,
+    )
     if not endpoints:
         print("No Yarbo endpoints found.")
         return
@@ -378,7 +436,7 @@ async def _run_status(args: argparse.Namespace) -> None:
             finally:
                 await client.disconnect()
             return
-        except (YarboError, OSError, TimeoutError, asyncio.TimeoutError) as e:
+        except (YarboError, OSError, TimeoutError) as e:
             print(f"  Failed: {e}")
             continue
     print("All endpoints failed.")
@@ -397,8 +455,6 @@ def _fmt(v: Any) -> str:
 
 def _print_status(status: Any, ip: str, sn: str) -> None:
     """Print full telemetry (PowerShell-style) so we expose all available data."""
-    from datetime import datetime, timezone
-
     # Order and labels aligned with PowerShell / app for consistency
     fields = [
         ("SerialNumber", status.sn or sn),
@@ -412,7 +468,7 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
         ("Heading", status.heading),
         (
             "LastUpdated",
-            datetime.fromtimestamp(status.last_updated, tz=timezone.utc).isoformat()
+            datetime.fromtimestamp(status.last_updated, tz=UTC).isoformat()
             if status.last_updated is not None
             else None,
         ),
@@ -442,19 +498,22 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
     for label, value in fields:
         print(f"  {label:<24}: {_fmt(value)}")
 
-    # Every value from the MQTT payload (flattened dotted keys)
+    # Every value from the MQTT payload (flattened dotted keys); sensitive fields redacted.
     all_mqtt = status.all_mqtt_values()
     if all_mqtt:
         print()
         print("  --- All MQTT keys (from DeviceMSG payload) ---")
         for k in sorted(all_mqtt.keys()):
-            v = all_mqtt[k]
-            if v is None:
-                s = ""
-            elif isinstance(v, (dict, list)):
-                s = json.dumps(v)
+            if _is_sensitive_key(k):
+                s = "***REDACTED***"
             else:
-                s = str(v)
+                v = all_mqtt[k]
+                if v is None:
+                    s = ""
+                elif isinstance(v, (dict, list)):
+                    s = json.dumps(v)
+                else:
+                    s = str(v)
             print(f"  {k}: {s}")
 
 
@@ -605,7 +664,7 @@ async def _run_map(args: argparse.Namespace) -> None:
         out = getattr(args, "out", None)
         s = json.dumps(data, indent=2)
         if out:
-            with open(out, "w") as f:
+            with Path(out).open("w") as f:
                 f.write(s)
             print(f"Map written to {out}.")
         else:
