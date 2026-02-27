@@ -216,10 +216,12 @@ class TestWithClientDiscover:
 @pytest.mark.asyncio
 class TestRunDiscover:
     async def test_prints_no_endpoints_when_empty(self, capsys):
-        """'No Yarbo endpoints found.' printed when discover returns []."""
+        """'No Yarbo endpoints found.' printed and exits 1 when discover returns []."""
         args = argparse.Namespace(subnet=None, timeout=5.0, port=1883, max_hosts=512)
         with patch("yarbo._cli.discover", AsyncMock(return_value=[])):
-            await _run_discover(args)
+            with pytest.raises(SystemExit) as exc_info:
+                await _run_discover(args)
+        assert exc_info.value.code == 1
         out = capsys.readouterr().out
         assert "No Yarbo endpoints found" in out
 

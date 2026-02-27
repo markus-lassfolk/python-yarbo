@@ -26,6 +26,7 @@ import asyncio
 import copy
 import json
 import logging
+from pathlib import Path
 import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -477,7 +478,7 @@ class MqttTransport:
             if self._mqtt_log_path:
                 with self._mqtt_log_lock:
                     try:
-                        with open(self._mqtt_log_path, "a", encoding="utf-8") as f:
+                        with Path(self._mqtt_log_path).open("a", encoding="utf-8") as f:
                             f.write(
                                 json.dumps(
                                     {"topic": getattr(msg, "topic", ""), "payload": payload},
