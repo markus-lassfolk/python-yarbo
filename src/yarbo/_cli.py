@@ -429,7 +429,7 @@ async def _run_status(args: argparse.Namespace) -> None:
     async for client, ip in _with_client(args):
         status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
         if status:
-            sn = args.serial if args.broker and args.serial else client.sn
+            sn = args.serial if args.broker and args.serial else client.serial_number
             _print_status(status, ip or args.broker, sn)
         else:
             print("Error: connected but no telemetry received within timeout.")
@@ -683,7 +683,7 @@ async def _run_roller(args: argparse.Namespace) -> None:
 
 async def _run_manual_stop(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
-        hard = args.mode == "idle"
+        hard = args.mode == "normal"
         emergency = args.mode == "emergency"
         await client.stop_manual_drive(hard=hard, emergency=emergency)
         print(f"Manual drive stopped ({args.mode}).")

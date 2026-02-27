@@ -707,8 +707,12 @@ class YarboTelemetry:
             rtk_status=_str_or_none(rtk_msg.get("status") if rtk_msg else d.get("rtk_status")),
             chute_angle=(
                 running_status.get("chute_angle")
-                or (state_msg.get("chute_angle") if state_msg else None)
-                or d.get("chute_angle")
+                if running_status.get("chute_angle") is not None
+                else (
+                    state_msg.get("chute_angle")
+                    if state_msg and state_msg.get("chute_angle") is not None
+                    else d.get("chute_angle")
+                )
             ),
             odom_confidence=(
                 odom.get("confidence")
