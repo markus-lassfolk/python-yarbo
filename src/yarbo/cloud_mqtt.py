@@ -26,13 +26,6 @@ from .mqtt import MqttTransport
 #: Override with the ``YARBO_MQTT_USERNAME`` environment variable.
 CLOUD_MQTT_DEFAULT_USERNAME = os.environ.get("YARBO_MQTT_USERNAME", "hytech")
 
-#: Default Tencent TDMQ password for Yarbo cloud access.
-#: Must be supplied via the ``YARBO_MQTT_PASSWORD`` environment variable or
-#: passed explicitly to :class:`YarboCloudMqttClient`.  No hardcoded fallback
-#: is provided; an empty string triggers a :exc:`ValueError` at construction
-#: time to prevent accidentally connecting without credentials.
-CLOUD_MQTT_DEFAULT_PASSWORD = os.environ.get("YARBO_MQTT_PASSWORD", "")
-
 
 class YarboCloudMqttClient(YarboLocalClient):
     """
