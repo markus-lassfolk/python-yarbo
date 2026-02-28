@@ -23,6 +23,7 @@ References:
 from __future__ import annotations
 
 import asyncio
+import collections
 import copy
 import json
 import logging
@@ -118,7 +119,9 @@ class MqttTransport:
         self._debug = debug
         self._debug_raw = debug_raw
         self._mqtt_capture_max = mqtt_capture_max
-        self._mqtt_capture: list[dict[str, Any]] = []
+        self._mqtt_capture: collections.deque[dict[str, Any]] = collections.deque(
+            maxlen=mqtt_capture_max if mqtt_capture_max > 0 else None
+        )
 
         # paho Client — typed via TYPE_CHECKING import to avoid hard dependency
         self._client: _paho.Client | None = None
@@ -276,13 +279,11 @@ class MqttTransport:
             return
         with self._mqtt_log_lock:
             self._mqtt_capture.append(copy.deepcopy(envelope))
-            while len(self._mqtt_capture) > self._mqtt_capture_max:
-                self._mqtt_capture.pop(0)
 
     def get_captured_mqtt(self) -> list[dict[str, Any]]:
         """Return a copy of captured MQTT messages (for GlitchTip report)."""
         with self._mqtt_log_lock:
-            return copy.deepcopy(self._mqtt_capture)
+            return copy.deepcopy(list(self._mqtt_capture))
 
     def _debug_print(self, envelope: dict[str, Any], prefix: str) -> None:
         """Print one MQTT envelope to stderr (human-readable or raw)."""
