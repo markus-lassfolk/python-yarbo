@@ -182,9 +182,7 @@ class YarboLocalClient:
             return result
         # Timeout — firmware that doesn't send data_feedback for get_controller.
         # Do NOT mark as acquired; raise so the caller can decide whether to retry.
-        raise YarboTimeoutError(
-            "Timed out waiting for get_controller acknowledgement from robot."
-        )
+        raise YarboTimeoutError("Timed out waiting for get_controller acknowledgement from robot.")
 
     async def _ensure_controller(self) -> None:
         """Send ``get_controller`` if not already acquired and auto mode is on."""
@@ -386,7 +384,7 @@ class YarboLocalClient:
             song_id: Song identifier (reserved, default 0).
         """
         await self._ensure_controller()
-        await self._transport.publish("set_sound_param", {"vol": volume})
+        await self._transport.publish("set_sound_param", {"vol": volume, "songId": song_id})
 
     async def play_song(self, song_id: int) -> None:
         """

@@ -53,19 +53,47 @@ def mock_local():
 
         # All new typed methods
         for name in [
-            "shutdown", "restart_container", "emergency_stop", "emergency_unlock",
-            "dstop", "resume", "cmd_recharge",
-            "set_head_light", "set_roof_lights", "set_laser", "set_sound", "play_song",
-            "set_camera", "set_person_detect", "set_usb",
-            "start_plan", "delete_plan", "delete_all_plans", "pause_plan",
+            "shutdown",
+            "restart_container",
+            "emergency_stop",
+            "emergency_unlock",
+            "dstop",
+            "resume",
+            "cmd_recharge",
+            "set_head_light",
+            "set_roof_lights",
+            "set_laser",
+            "set_sound",
+            "play_song",
+            "set_camera",
+            "set_person_detect",
+            "set_usb",
+            "start_plan",
+            "delete_plan",
+            "delete_all_plans",
+            "pause_plan",
             "in_plan_action",
-            "start_waypoint", "save_charging_point", "save_map_backup", "start_hotspot",
+            "start_waypoint",
+            "save_charging_point",
+            "save_map_backup",
+            "start_hotspot",
             # data_feedback methods return a dict
-            "read_plan", "read_all_plans", "read_schedules",
-            "read_recharge_point", "read_clean_area", "get_all_map_backup",
-            "get_wifi_list", "get_connected_wifi", "get_hub_info",
-            "read_no_charge_period", "get_battery_cell_temps", "get_motor_temps",
-            "get_body_current", "get_head_current", "get_speed", "get_odometer",
+            "read_plan",
+            "read_all_plans",
+            "read_schedules",
+            "read_recharge_point",
+            "read_clean_area",
+            "get_all_map_backup",
+            "get_wifi_list",
+            "get_connected_wifi",
+            "get_hub_info",
+            "read_no_charge_period",
+            "get_battery_cell_temps",
+            "get_motor_temps",
+            "get_body_current",
+            "get_head_current",
+            "get_speed",
+            "get_odometer",
             "get_product_code",
         ]:
             setattr(instance, name, AsyncMock(return_value={}))
@@ -143,7 +171,7 @@ class TestLightsSound:
 
     async def test_set_sound_volume(self, client, mock_transport):
         await client.set_sound(75)
-        mock_transport.publish.assert_called_once_with("set_sound_param", {"vol": 75})
+        mock_transport.publish.assert_called_once_with("set_sound_param", {"vol": 75, "songId": 0})
 
     async def test_play_song(self, client, mock_transport):
         await client.play_song(3)
@@ -191,15 +219,11 @@ class TestCameraDetection:
 class TestPlansScheduling:
     async def test_start_plan_default_percent(self, client, mock_transport):
         await client.start_plan(7)
-        mock_transport.publish.assert_called_once_with(
-            "start_plan", {"planId": 7, "percent": 100}
-        )
+        mock_transport.publish.assert_called_once_with("start_plan", {"planId": 7, "percent": 100})
 
     async def test_start_plan_custom_percent(self, client, mock_transport):
         await client.start_plan(3, percent=50)
-        mock_transport.publish.assert_called_once_with(
-            "start_plan", {"planId": 3, "percent": 50}
-        )
+        mock_transport.publish.assert_called_once_with("start_plan", {"planId": 3, "percent": 50})
 
     async def test_read_plan(self, client, mock_transport):
         mock_transport.wait_for_message = AsyncMock(
@@ -294,9 +318,7 @@ class TestWifiConnectivity:
         assert isinstance(result, dict)
 
     async def test_get_connected_wifi(self, client, mock_transport):
-        mock_transport.wait_for_message = AsyncMock(
-            return_value={"topic": "get_connect_wifi_name"}
-        )
+        mock_transport.wait_for_message = AsyncMock(return_value={"topic": "get_connect_wifi_name"})
         result = await client.get_connected_wifi()
         mock_transport.publish.assert_called_once_with("get_connect_wifi_name", {})
         assert isinstance(result, dict)
@@ -320,17 +342,13 @@ class TestWifiConnectivity:
 @pytest.mark.asyncio
 class TestDiagnostics:
     async def test_read_no_charge_period(self, client, mock_transport):
-        mock_transport.wait_for_message = AsyncMock(
-            return_value={"topic": "read_no_charge_period"}
-        )
+        mock_transport.wait_for_message = AsyncMock(return_value={"topic": "read_no_charge_period"})
         result = await client.read_no_charge_period()
         mock_transport.publish.assert_called_once_with("read_no_charge_period", {})
         assert isinstance(result, dict)
 
     async def test_get_battery_cell_temps(self, client, mock_transport):
-        mock_transport.wait_for_message = AsyncMock(
-            return_value={"topic": "battery_cell_temp_msg"}
-        )
+        mock_transport.wait_for_message = AsyncMock(return_value={"topic": "battery_cell_temp_msg"})
         result = await client.get_battery_cell_temps()
         mock_transport.publish.assert_called_once_with("battery_cell_temp_msg", {})
         assert isinstance(result, dict)
