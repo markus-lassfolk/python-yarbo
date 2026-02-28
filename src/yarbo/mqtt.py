@@ -290,12 +290,13 @@ class MqttTransport:
 
         topic = envelope.get("topic", "")
         payload = envelope.get("payload", {})
-        if self._debug_raw:
-            line = json.dumps({"direction": envelope.get("direction", "?"), "topic": topic, "payload": payload}, ensure_ascii=False) + "\n"
-            sys.stderr.write(line)
-        else:
-            sys.stderr.write(f"\n--- MQTT {prefix} ---\ntopic: {topic}\npayload:\n")
-            sys.stderr.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
+        with self._mqtt_log_lock:
+            if self._debug_raw:
+                line = json.dumps({"direction": envelope.get("direction", "?"), "topic": topic, "payload": payload}, ensure_ascii=False) + "\n"
+                sys.stderr.write(line)
+            else:
+                sys.stderr.write(f"\n--- MQTT {prefix} ---\ntopic: {topic}\npayload:\n")
+                sys.stderr.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
 
     def release_queue(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
         """
@@ -516,10 +517,10 @@ class MqttTransport:
                 msg.topic,
                 str(payload)[:160],
             )
-            envelope = {"direction": "received", "topic": getattr(msg, "topic", ""), "payload": payload}
-            self._maybe_capture(envelope)
+            capture_envelope = {"direction": "received", "topic": getattr(msg, "topic", ""), "payload": payload}
+            self._maybe_capture(capture_envelope)
             if self._debug:
-                self._debug_print(envelope, "←")
+                self._debug_print(capture_envelope, "←")
             # Optional: log every raw MQTT message (topic + payload) for comparison with CLI output.
             if self._mqtt_log_path:
                 with self._mqtt_log_lock:
