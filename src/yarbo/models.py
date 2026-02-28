@@ -14,7 +14,38 @@ References:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import enum
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Head type enum
+# ---------------------------------------------------------------------------
+
+
+class HeadType(enum.IntEnum):
+    """Attachment head type as reported in ``HeadMsg.head_type``."""
+
+    Snow = 0
+    """Snow blower head."""
+
+    Mower = 1
+    """Standard mower head."""
+
+    MowerPro = 2
+    """Pro mower head."""
+
+    Leaf = 3
+    """Leaf blower head."""
+
+    SAM = 4
+    """SAM head."""
+
+    Trimmer = 5
+    """Trimmer head."""
+
+    NoHead = 6
+    """No head attached."""
+
 
 # ---------------------------------------------------------------------------
 # Lights
@@ -137,6 +168,84 @@ class YarboRobot:
 
 
 # ---------------------------------------------------------------------------
+# NMEA GNGGA parsing helper
+# ---------------------------------------------------------------------------
+
+
+def _parse_gngga(  # noqa: PLR0912
+    sentence: str,
+) -> tuple[float | None, float | None, float | None, int]:
+    """Parse a GNGGA NMEA 0183 sentence into GPS coordinates.
+
+    Format::
+
+        $GNGGA,time,lat,N/S,lon,E/W,quality,sats,hdop,alt,M,...*checksum
+
+    Args:
+        sentence: Raw GNGGA sentence string (with or without checksum).
+
+    Returns:
+        Tuple of ``(latitude, longitude, altitude, fix_quality)`` where
+        latitude and longitude are in decimal degrees (positive = N/E) and
+        altitude is in metres above MSL.  Latitude/longitude/altitude are
+        ``None`` when fix quality is 0 (invalid) or fields are absent.
+        ``fix_quality`` is always an int (0 = invalid).
+    """
+    if not sentence.startswith(("$GNGGA", "$GPGGA")):
+        return None, None, None, 0
+    # Strip NMEA checksum (*XX) if present
+    if "*" in sentence:
+        sentence = sentence[: sentence.index("*")]
+    parts = sentence.split(",")
+    if len(parts) < 10:
+        return None, None, None, 0
+
+    try:
+        fix_quality = int(parts[6]) if parts[6] else 0
+    except ValueError:
+        fix_quality = 0
+
+    if fix_quality == 0:
+        return None, None, None, 0
+
+    # Latitude: DDMM.MMMM → decimal degrees
+    lat: float | None = None
+    if parts[2] and parts[3]:
+        try:
+            raw_lat = parts[2]
+            lat_deg = float(raw_lat[:2])
+            lat_min = float(raw_lat[2:])
+            lat = lat_deg + lat_min / 60.0
+            if parts[3].upper() == "S":
+                lat = -lat
+        except (ValueError, IndexError):
+            lat = None
+
+    # Longitude: DDDMM.MMMM → decimal degrees
+    lon: float | None = None
+    if parts[4] and parts[5]:
+        try:
+            raw_lon = parts[4]
+            lon_deg = float(raw_lon[:3])
+            lon_min = float(raw_lon[3:])
+            lon = lon_deg + lon_min / 60.0
+            if parts[5].upper() == "W":
+                lon = -lon
+        except (ValueError, IndexError):
+            lon = None
+
+    # Altitude in metres (field 9)
+    alt: float | None = None
+    if len(parts) > 9 and parts[9]:
+        try:
+            alt = float(parts[9])
+        except ValueError:
+            alt = None
+
+    return lat, lon, alt, fix_quality
+
+
+# ---------------------------------------------------------------------------
 # Telemetry
 # ---------------------------------------------------------------------------
 
@@ -210,8 +319,80 @@ class YarboTelemetry:
         ``from_dict`` coerces it to ``int`` automatically.
     """
 
+    head_type: int | None = None
+    """Attachment head type integer. See :class:`HeadType` enum. Source: ``HeadMsg.head_type``."""
+
+    on_going_planning: bool | None = None
+    """True while a work plan is actively executing. Source: ``StateMSG.on_going_planning``."""
+
+    on_going_recharging: bool | None = None
+    """True while returning to or docking at the base. Source: ``StateMSG.on_going_recharging``."""
+
+    planning_paused: bool | None = None
+    """True when the active plan has been paused. Source: ``StateMSG.planning_paused``."""
+
+    machine_controller: int | None = None
+    """Active controller identifier. Source: ``StateMSG.machine_controller``."""
+
+    # Plan feedback fields (merged from plan_feedback topic)
+    plan_id: str | None = None
+    """Active plan UUID. Populated from ``plan_feedback`` messages."""
+
+    plan_state: str | None = None
+    """Current plan execution state (e.g. ``"running"``, ``"paused"``). From ``plan_feedback``."""
+
+    area_covered: float | None = None
+    """Area covered so far in the active plan (m²). From ``plan_feedback``."""
+
+    duration: float | None = None
+    """Elapsed plan duration in seconds. From ``plan_feedback``."""
+
+    # GPS fields (parsed from rtk_base_data.rover.gngga NMEA sentence)
+    latitude: float | None = None
+    """GPS latitude in decimal degrees (WGS84, positive=N). Source: ``gngga``."""
+
+    longitude: float | None = None
+    """GPS longitude in decimal degrees (WGS84, positive=E). Source: ``gngga``."""
+
+    altitude: float | None = None
+    """GPS altitude in metres above MSL. Source: ``rtk_base_data.rover.gngga``."""
+
+    fix_quality: int = 0
+    """GNSS fix quality (GNGGA field 6). 0=invalid, 1=GPS, 2=DGPS, 4=RTK fixed, 5=RTK float."""
+
     raw: dict[str, Any] = field(default_factory=dict)
     """Complete raw DeviceMSG dict."""
+
+    @property
+    def head_name(self) -> str:
+        """Human-readable head type name derived from :attr:`head_type`.
+
+        Returns ``"Unknown"`` when ``head_type`` is ``None``, or
+        ``"Unknown(<value>)"`` for unrecognised integers.
+        """
+        if self.head_type is None:
+            return "Unknown"
+        try:
+            return HeadType(self.head_type).name
+        except ValueError:
+            return f"Unknown({self.head_type})"
+
+    @property
+    def battery_capacity(self) -> int | None:
+        """Alias for :attr:`battery` (battery state of charge, 0-100 %).
+
+        Both names refer to the same underlying value; ``battery_capacity``
+        is the more descriptive form preferred in new code.
+        """
+        return self.battery
+
+    @property
+    def serial_number(self) -> str:
+        """Alias for :attr:`sn` (robot serial number).
+
+        ``serial_number`` is the more descriptive form preferred in new code.
+        """
+        return self.sn
 
     @classmethod
     def from_dict(cls, d: dict[str, Any], topic: str | None = None) -> YarboTelemetry:
@@ -232,6 +413,7 @@ class YarboTelemetry:
         state_msg: dict[str, Any] = d.get("StateMSG", {}) or {}
         rtk_msg: dict[str, Any] = d.get("RTKMSG", {}) or {}
         odom: dict[str, Any] = d.get("CombinedOdom", {}) or {}
+        head_msg: dict[str, Any] = d.get("HeadMsg", {}) or {}
 
         # Battery: nested first, flat fallback
         battery: int | None
@@ -269,9 +451,40 @@ class YarboTelemetry:
             if len(parts) >= 2:
                 sn = parts[1]
 
-        # Coerce led: live protocol delivers it as a string (e.g. "69666")
+        # Coerce led: live protocol delivers it as a string (e.g. "69666").
+        # Guard against non-numeric firmware values (e.g. "", "off") by falling
+        # back to None rather than crashing the entire telemetry parsing path.
         raw_led = d.get("led")
-        led: int | None = int(raw_led) if raw_led is not None else None
+        led: int | None
+        if raw_led is None:
+            led = None
+        else:
+            try:
+                led = int(raw_led)
+            except (ValueError, TypeError):
+                led = None
+
+        # Activity state fields from StateMSG
+        def _optional_bool(v: object) -> bool | None:
+            return bool(v) if v is not None else None
+
+        on_going_planning: bool | None = (
+            _optional_bool(state_msg.get("on_going_planning")) if state_msg else None
+        )
+        on_going_recharging: bool | None = (
+            _optional_bool(state_msg.get("on_going_recharging")) if state_msg else None
+        )
+        planning_paused: bool | None = (
+            _optional_bool(state_msg.get("planning_paused")) if state_msg else None
+        )
+
+        # GPS: parse GNGGA NMEA sentence from rtk_base_data.rover.gngga
+        rtk_base_data: dict[str, Any] = d.get("rtk_base_data", {}) or {}
+        rover: dict[str, Any] = rtk_base_data.get("rover", {}) or {}
+        gngga_sentence: str = rover.get("gngga", "") or ""
+        gps_lat, gps_lon, gps_alt, gps_fix = (
+            _parse_gngga(gngga_sentence) if gngga_sentence else (None, None, None, 0)
+        )
 
         return cls(
             sn=sn,
@@ -286,6 +499,37 @@ class YarboTelemetry:
             heading=heading,
             speed=d.get("speed"),
             led=led,
+            head_type=head_msg.get("head_type") if head_msg else None,
+            on_going_planning=on_going_planning,
+            on_going_recharging=on_going_recharging,
+            planning_paused=planning_paused,
+            machine_controller=state_msg.get("machine_controller") if state_msg else None,
+            latitude=gps_lat,
+            longitude=gps_lon,
+            altitude=gps_alt,
+            fix_quality=gps_fix,
+            raw=d,
+        )
+
+    @classmethod
+    def from_plan_feedback(cls, d: dict[str, Any]) -> YarboTelemetry:
+        """Parse a ``plan_feedback`` MQTT message into a partial :class:`YarboTelemetry`.
+
+        Only the plan-specific fields are populated; all robot-state fields
+        (battery, position, etc.) are left at their defaults (``None``/``""``)
+        and should be merged with data from a ``DeviceMSG`` message.
+
+        Args:
+            d: Decoded ``plan_feedback`` payload dict.
+
+        Returns:
+            :class:`YarboTelemetry` with plan tracking fields populated.
+        """
+        return cls(
+            plan_id=d.get("planId"),
+            plan_state=d.get("state"),
+            area_covered=d.get("areaCovered"),
+            duration=d.get("duration"),
             raw=d,
         )
 
@@ -473,6 +717,18 @@ class YarboSchedule:
             raw=d,
         )
 
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to the MQTT ``save_schedule`` payload format."""
+        return {
+            "scheduleId": self.schedule_id,
+            "planId": self.plan_id,
+            "enabled": self.enabled,
+            "scheduleType": self.schedule_type,
+            "weekdays": self.weekdays,
+            "startTime": self.start_time,
+            "timezone": self.timezone,
+        }
+
 
 # ---------------------------------------------------------------------------
 # Command result
@@ -511,9 +767,21 @@ class YarboCommandResult:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> YarboCommandResult:
+        if "state" in d:
+            state_val = d["state"]
+            if state_val is None:
+                state = 0
+            else:
+                try:
+                    state = int(state_val)
+                except (ValueError, TypeError):
+                    # Unparseable state: treat as failure sentinel; raw value in raw.
+                    state = -1
+        else:
+            state = 0
         return cls(
             topic=d.get("topic", ""),
-            state=int(d.get("state") or 0),
+            state=state,
             data=d.get("data", {}),
             raw=d,
         )

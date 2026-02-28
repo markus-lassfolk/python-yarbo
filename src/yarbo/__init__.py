@@ -51,10 +51,11 @@ __license__ = "MIT"
 
 from ._codec import decode, encode
 from .client import YarboClient
-from .error_reporting import init_error_reporting
 from .cloud import YarboCloudClient
+from .cloud_mqtt import YarboCloudMqttClient
 from .const import Topic
 from .discovery import DiscoveredRobot, discover_yarbo
+from .error_reporting import init_error_reporting
 from .exceptions import (
     YarboAuthError,
     YarboCommandError,
@@ -67,6 +68,7 @@ from .exceptions import (
 )
 from .local import YarboLocalClient
 from .models import (
+    HeadType,
     TelemetryEnvelope,
     YarboCommandResult,
     YarboLightState,
@@ -77,36 +79,44 @@ from .models import (
     YarboTelemetry,
 )
 
-__all__ = [
+__all__ = [  # noqa: RUF022 — grouped by category, alphabetical within each
+    # Version
+    "__version__",
+    # Codec helpers
+    "decode",
+    "encode",
+    # Error reporting
+    "init_error_reporting",
     # Discovery
     "DiscoveredRobot",
-    # Models
-    "TelemetryEnvelope",
-    # Helpers
+    "discover_yarbo",
+    # Topic helper
     "Topic",
-    # Core clients
-    "YarboAuthError",
-    "YarboClient",
-    "YarboCloudClient",
-    "YarboCommandError",
+    # Models (alphabetical)
+    "HeadType",
+    "TelemetryEnvelope",
     "YarboCommandResult",
-    "YarboConnectionError",
-    "YarboError",
     "YarboLightState",
-    "YarboLocalClient",
-    "YarboNotControllerError",
     "YarboPlan",
     "YarboPlanParams",
-    "YarboProtocolError",
     "YarboRobot",
     "YarboSchedule",
     "YarboTelemetry",
+    # Clients (alphabetical)
+    "YarboClient",
+    "YarboCloudClient",
+    "YarboCloudMqttClient",
+    "YarboLocalClient",
+    # Exceptions (alphabetical)
+    "YarboAuthError",
+    "YarboCommandError",
+    "YarboConnectionError",
+    "YarboError",
+    "YarboNotControllerError",
+    "YarboProtocolError",
     "YarboTimeoutError",
     "YarboTokenExpiredError",
-    "__version__",
-    # Codec
-    "decode",
-    "discover_yarbo",
-    "encode",
-    "init_error_reporting",
 ]
+
+# Opt-out error reporting: enabled by default, disable via YARBO_SENTRY_DSN=""
+init_error_reporting()

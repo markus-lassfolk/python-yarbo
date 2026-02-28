@@ -19,7 +19,7 @@ Transport support matrix
 | Local REST (8088)         | ❌ No       | TODO         |
 | Local TCP JSON (22220)    | ❌ No       | TODO         |
 | Cloud REST (HTTPS)        | ✅ Yes      | JWT auth     |
-| Cloud MQTT (TLS/8883)     | ❌ No       | TODO         |
+| Cloud MQTT (TLS/8883)     | ✅ Yes      | YarboCloudMqttClient |
 +---------------------------+-------------+--------------+
 """
 
