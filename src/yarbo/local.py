@@ -33,6 +33,7 @@ References:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -740,14 +741,19 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         wait_queue = self._transport.create_wait_queue()
-        await self._transport.publish(cmd, payload)
-        msg = await self._transport.wait_for_message(
-            timeout=timeout,
-            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
-            command_name=cmd,
-            _queue=wait_queue,
-        )
-        return msg if isinstance(msg, dict) else {}
+        try:
+            await self._transport.publish(cmd, payload)
+            msg = await self._transport.wait_for_message(
+                timeout=timeout,
+                feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+                command_name=cmd,
+                _queue=wait_queue,
+            )
+            return msg if isinstance(msg, dict) else {}
+        except Exception:
+            with contextlib.suppress(ValueError):
+                self._transport._message_queues.remove(wait_queue)
+            raise
 
     # ------------------------------------------------------------------
     # Raw publish (escape hatch)
