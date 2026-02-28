@@ -85,6 +85,11 @@ class YarboLocalClient:
         port:           Broker port (default 1883).
         auto_controller: If ``True`` (default), automatically send
                          ``get_controller`` before the first action command.
+        mqtt_log_path:  If set, append every raw MQTT message (topic + payload JSON) to this file.
+        debug:          If ``True``, print every MQTT message sent/received to stderr (human-readable).
+        debug_raw:      If ``True`` and debug is on, print one-line JSON per message (no formatting).
+        mqtt_capture_max: If > 0, keep the last N messages in a buffer; use :meth:`get_captured_mqtt`
+                         to retrieve them (e.g. for sending to GlitchTip via ``report_mqtt_dump_to_glitchtip``).
     """
 
     def __init__(
@@ -94,6 +99,9 @@ class YarboLocalClient:
         port: int = LOCAL_PORT,
         auto_controller: bool = True,
         mqtt_log_path: str | None = None,
+        debug: bool = False,
+        debug_raw: bool = False,
+        mqtt_capture_max: int = 0,
     ) -> None:
         if not broker:
             raise ValueError(
@@ -105,9 +113,19 @@ class YarboLocalClient:
         self._port = port
         self._auto_controller = auto_controller
         self._transport = MqttTransport(
-            broker=broker, sn=sn, port=port, mqtt_log_path=mqtt_log_path
+            broker=broker,
+            sn=sn,
+            port=port,
+            mqtt_log_path=mqtt_log_path,
+            debug=debug,
+            debug_raw=debug_raw,
+            mqtt_capture_max=mqtt_capture_max,
         )
         self._controller_acquired = False
+
+    def get_captured_mqtt(self) -> list[dict[str, Any]]:
+        """Return captured MQTT messages (when mqtt_capture_max > 0). For GlitchTip reports."""
+        return self._transport.get_captured_mqtt()
 
     # ------------------------------------------------------------------
     # Context manager
