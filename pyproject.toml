@@ -28,6 +28,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+sentry = [
+    "sentry-sdk>=2.0",
+]
 cloud = [
     "cryptography>=42.0",
 ]

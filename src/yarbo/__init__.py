@@ -51,6 +51,7 @@ __license__ = "MIT"
 
 from ._codec import decode, encode
 from .client import YarboClient
+from .error_reporting import init_error_reporting
 from .cloud import YarboCloudClient
 from .const import Topic
 from .discovery import DiscoveredRobot, discover_yarbo
@@ -107,4 +108,5 @@ __all__ = [
     "decode",
     "discover_yarbo",
     "encode",
+    "init_error_reporting",
 ]
