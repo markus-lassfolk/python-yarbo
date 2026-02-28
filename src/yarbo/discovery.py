@@ -395,7 +395,7 @@ async def discover(  # noqa: PLR0912, PLR0915
             ips, capped = _expand_subnet(network, max_hosts)
             candidates.extend(ips)
             if capped:
-                total = network.num_addresses - 2
+                total = sum(1 for _ in network.hosts())
                 logger.warning(
                     "Subnet %s has %d hosts; scanning first %d. Use --max-hosts to scan more.",
                     subnet,
@@ -419,7 +419,7 @@ async def discover(  # noqa: PLR0912, PLR0915
                 ips, capped = _expand_subnet(network, max_hosts)
                 candidates.extend(ips)
                 if capped:
-                    total = network.num_addresses - 2
+                    total = sum(1 for _ in network.hosts())
                     logger.warning(
                         "Subnet %s has %d hosts; scanning first %d. Use --max-hosts to scan more.",
                         net_cidr,
