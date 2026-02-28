@@ -7,7 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from yarbo._cli import _add_connection_args, _run_discover, _run_status, _with_client
+from yarbo._cli import (
+    _add_connection_args,
+    _apply_debug_env,
+    _maybe_report_mqtt,
+    _mqtt_capture_max,
+    _run_discover,
+    _run_status,
+    _with_client,
+)
 from yarbo.discovery import YarboEndpoint
 
 # ---------------------------------------------------------------------------
@@ -24,6 +32,10 @@ def _make_args(**kwargs) -> argparse.Namespace:
         "subnet": None,
         "timeout": 5.0,
         "max_hosts": 512,
+        "log_mqtt": None,
+        "debug": False,
+        "debug_raw": False,
+        "report_mqtt": False,
     }
     defaults.update(kwargs)
     return argparse.Namespace(**defaults)
@@ -70,6 +82,15 @@ class TestAddConnectionArgs:
         assert args.serial == "SN1"
         assert args.port == 1883
 
+    def test_has_debug_raw_report_mqtt_flags(self):
+        """--debug, --raw, and --report-mqtt are registered for troubleshooting."""
+        parser = argparse.ArgumentParser()
+        _add_connection_args(parser)
+        args = parser.parse_args(["--debug", "--raw", "--report-mqtt"])
+        assert args.debug is True
+        assert args.debug_raw is True
+        assert args.report_mqtt is True
+
 
 # ---------------------------------------------------------------------------
 # _with_client — explicit broker/sn path
@@ -96,6 +117,30 @@ class TestWithClientExplicit:
         assert ip == "192.0.2.1"
         mock_client.connect.assert_awaited_once()
         mock_client.disconnect.assert_awaited_once()
+
+    async def test_passes_debug_and_capture_to_client(self):
+        """When --debug, --raw, or --report-mqtt are set, YarboLocalClient receives them."""
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+
+        args = _make_args(
+            broker="192.0.2.1",
+            serial="SN1",
+            debug=True,
+            debug_raw=True,
+            report_mqtt=True,
+        )
+
+        with patch("yarbo._cli.YarboLocalClient", return_value=mock_client) as mock_cls:
+            async for _ in _with_client(args):
+                pass
+
+        mock_cls.assert_called_once()
+        call_kw = mock_cls.call_args.kwargs
+        assert call_kw["debug"] is True
+        assert call_kw["debug_raw"] is True
+        assert call_kw["mqtt_capture_max"] == 1000
 
     async def test_explicit_does_not_call_discover(self):
         """Explicit broker/sn path must not call discover()."""
@@ -318,3 +363,129 @@ class TestRunStatus:
             pytest.raises(SystemExit),
         ):
             await _run_status(args)
+
+    async def test_report_mqtt_called_when_flag_set(self):
+        """When --report-mqtt is set, report_mqtt_dump_to_glitchtip is called after command."""
+        mock_status = MagicMock()
+        mock_status.sn = "SN1"
+        mock_status.name = None
+        mock_status.head_type = None
+        mock_status.battery = 80
+        mock_status.working_state = 0
+        mock_status.charging_status = None
+        mock_status.error_code = None
+        mock_status.rtk_status = None
+        mock_status.heading = None
+        mock_status.last_updated = None
+        mock_status.head_serial_number = None
+        mock_status.battery_status = None
+        mock_status.on_going_planning = None
+        mock_status.planning_paused = None
+        mock_status.on_going_recharging = None
+        mock_status.car_controller = None
+        mock_status.machine_controller = None
+        mock_status.position_x = None
+        mock_status.position_y = None
+        mock_status.phi = None
+        mock_status.odom_confidence = None
+        mock_status.chute_angle = None
+        mock_status.led = None
+        mock_status.wireless_charge_voltage = None
+        mock_status.wireless_charge_current = None
+        mock_status.route_priority = None
+        mock_status.state = "idle"
+        mock_status.speed = None
+        mock_status.latitude = None
+        mock_status.longitude = None
+        mock_status.altitude = None
+        mock_status.fix_quality = 0
+        mock_status.all_mqtt_values = MagicMock(return_value={})
+
+        mock_client = MagicMock()
+        mock_client.connect = AsyncMock()
+        mock_client.disconnect = AsyncMock()
+        mock_client.get_status = AsyncMock(return_value=mock_status)
+        mock_client.get_captured_mqtt = MagicMock(return_value=[{"topic": "t", "payload": {}}])
+
+        args = _make_args(broker="192.0.2.1", serial="SN1", report_mqtt=True)
+
+        with (
+            patch("yarbo._cli.YarboLocalClient", return_value=mock_client),
+            patch("yarbo._cli.report_mqtt_dump_to_glitchtip") as mock_report,
+        ):
+            await _run_status(args)
+
+        mock_report.assert_called_once()
+        assert mock_report.call_args[0][0] == [{"topic": "t", "payload": {}}]
+        mock_client.get_captured_mqtt.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# _mqtt_capture_max, _maybe_report_mqtt
+# ---------------------------------------------------------------------------
+
+
+class TestMqttCaptureMax:
+    def test_zero_when_report_mqtt_false(self):
+        args = _make_args(report_mqtt=False)
+        assert _mqtt_capture_max(args) == 0
+
+    def test_1000_when_report_mqtt_true(self):
+        args = _make_args(report_mqtt=True)
+        assert _mqtt_capture_max(args) == 1000
+
+
+class TestMaybeReportMqtt:
+    def test_calls_report_when_report_mqtt_set(self):
+        args = _make_args(report_mqtt=True)
+        mock_client = MagicMock()
+        mock_client.get_captured_mqtt = MagicMock(return_value=[{"topic": "x", "payload": {}}])
+        with patch("yarbo._cli.report_mqtt_dump_to_glitchtip") as mock_report:
+            _maybe_report_mqtt(args, mock_client)
+        mock_report.assert_called_once_with([{"topic": "x", "payload": {}}])
+        mock_client.get_captured_mqtt.assert_called_once()
+
+    def test_no_op_when_report_mqtt_false(self):
+        args = _make_args(report_mqtt=False)
+        mock_client = MagicMock()
+        with patch("yarbo._cli.report_mqtt_dump_to_glitchtip") as mock_report:
+            _maybe_report_mqtt(args, mock_client)
+        mock_report.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _apply_debug_env — YARBO_DEBUG / YARBO_DEBUG_RAW
+# ---------------------------------------------------------------------------
+
+
+class TestApplyDebugEnv:
+    def test_sets_debug_from_yarbo_debug_env(self, monkeypatch):
+        """YARBO_DEBUG=1 (or true/yes) enables debug when --debug was not passed."""
+        args = _make_args(debug=False)
+        monkeypatch.setenv("YARBO_DEBUG", "1")
+        _apply_debug_env(args)
+        assert args.debug is True
+
+    def test_sets_debug_raw_from_yarbo_debug_raw_env(self, monkeypatch):
+        """YARBO_DEBUG_RAW=true enables raw debug when --raw was not passed."""
+        args = _make_args(debug_raw=False)
+        monkeypatch.setenv("YARBO_DEBUG_RAW", "true")
+        _apply_debug_env(args)
+        assert args.debug_raw is True
+
+    def test_cli_debug_overrides_env(self, monkeypatch):
+        """Explicit --debug=True leaves debug True even if env is unset."""
+        args = _make_args(debug=True)
+        monkeypatch.delenv("YARBO_DEBUG", raising=False)
+        _apply_debug_env(args)
+        assert args.debug is True
+
+    def test_debug_stays_false_when_env_empty(self, monkeypatch):
+        """When YARBO_DEBUG is empty or unset, debug remains False."""
+        args = _make_args(debug=False)
+        monkeypatch.delenv("YARBO_DEBUG", raising=False)
+        _apply_debug_env(args)
+        assert args.debug is False
+        monkeypatch.setenv("YARBO_DEBUG", "")
+        _apply_debug_env(args)
+        assert args.debug is False

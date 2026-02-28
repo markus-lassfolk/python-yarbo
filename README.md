@@ -150,7 +150,7 @@ asyncio.run(main())
 
 ### `YarboLocalClient` (MQTT-only)
 
-Same interface as `YarboClient`, local only, no cloud features.
+Same interface as `YarboClient`, local only, no cloud features. Optional constructor args for troubleshooting: **`debug`** / **`debug_raw`** (print every MQTT message to stderr), **`mqtt_log_path`** (append raw messages to a file), **`mqtt_capture_max`** (buffer last N messages for `get_captured_mqtt()` e.g. for GlitchTip reports). See [Debug and troubleshooting](#debug-and-troubleshooting).
 
 ### `YarboLightState`
 
@@ -240,6 +240,64 @@ live packet captures. Key protocol facts:
   `CombinedOdom.x/y/phi`
 - **Not yet implemented**: Local REST API (port 8088) and TCP JSON (port 22220)
   are documented in `yarbo-reversing` but not implemented here
+
+## Debug and troubleshooting
+
+The CLI and library support debug logging and sending MQTT dumps to GlitchTip so you can inspect traffic and help maintainers support firmware/configurations they cannot test locally.
+
+### Debug logging (see what’s sent and received)
+
+- **`--debug`** (or **`YARBO_DEBUG=1`** / `true` / `yes`): every MQTT message sent and received is printed to **stderr** in human-readable form (topic + pretty-printed JSON payload).
+- **`--raw`** (or **`YARBO_DEBUG_RAW=1`**): together with debug, each message is printed as a single JSON line (no formatting), e.g. for piping or log files.
+
+Environment variables apply when the flag is not given, so you can leave `YARBO_DEBUG=1` set while developing.
+
+```bash
+# Human-readable on stderr
+yarbo status --broker 192.168.1.1 --sn ABC123 --debug
+
+# Same via env (no need to pass --debug every time)
+YARBO_DEBUG=1 yarbo status --broker 192.168.1.1 --sn ABC123
+
+# Raw one-line JSON per message
+yarbo status --broker 192.168.1.1 --sn ABC123 --debug --raw
+```
+
+From Python you can enable the same behaviour by passing `debug=True` (and optionally `debug_raw=True`) into `YarboLocalClient`:
+
+```python
+from yarbo import YarboLocalClient
+
+client = YarboLocalClient(
+    broker="192.168.1.1", sn="ABC123",
+    debug=True, debug_raw=False,
+)
+await client.connect()
+# ... all MQTT traffic is printed to stderr
+```
+
+### Logging raw MQTT to a file
+
+- **`--log-mqtt FILE`**: appends every raw MQTT message (topic + decoded payload JSON, one JSON object per line) to the given file. Useful for offline comparison or scripting.
+
+```bash
+yarbo status --broker 192.168.1.1 --sn ABC123 --log-mqtt mqtt_log.jsonl
+```
+
+### Sending an MQTT dump to GlitchTip (for support)
+
+When reporting a bug or asking for support for a firmware/head type the maintainers don’t have, you can send a full MQTT dump so they can see exactly what the robot sends and receives.
+
+- **`--report-mqtt`**: for that command run, up to 1000 MQTT messages are captured; at the end of the run they are sent to GlitchTip (Sentry) as an info-level event. Sensitive keys (e.g. password, token) in payloads are redacted before send.
+
+**Requirements:** GlitchTip/Sentry must be enabled (e.g. `YARBO_SENTRY_DSN` or `SENTRY_DSN` set). If the DSN is not set, the flag is ignored and no data is sent.
+
+```bash
+# Capture status command traffic and send dump to GlitchTip
+yarbo status --broker 192.168.1.1 --sn ABC123 --report-mqtt
+```
+
+From Python you can capture and send a dump yourself using `report_mqtt_dump_to_glitchtip` from `yarbo.error_reporting`, and `client.get_captured_mqtt()` when the client was created with `mqtt_capture_max > 0` (see `YarboLocalClient` and `MqttTransport` parameters).
 
 See [`yarbo-reversing`](https://github.com/markus-lassfolk/yarbo-reversing) for:
 - Full [command catalogue](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/COMMAND_CATALOGUE.md)

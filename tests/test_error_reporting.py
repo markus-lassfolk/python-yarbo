@@ -1,8 +1,17 @@
-"""Tests for yarbo.error_reporting — _scrub_event and init_error_reporting."""
+"""Tests for yarbo.error_reporting — _scrub_event, init_error_reporting, report_mqtt_dump_to_glitchtip."""
 
 from __future__ import annotations
 
-from yarbo.error_reporting import _scrub_event, init_error_reporting
+import sys
+from unittest.mock import MagicMock
+
+from yarbo.error_reporting import (
+    _scrub_event,
+    _scrub_dict,
+    _scrub_mqtt_envelope,
+    init_error_reporting,
+    report_mqtt_dump_to_glitchtip,
+)
 
 
 def _make_event(**kwargs):
@@ -91,3 +100,77 @@ class TestInitErrorReporting:
         monkeypatch.delenv("YARBO_SENTRY_DSN", raising=False)
         monkeypatch.delenv("SENTRY_DSN", raising=False)
         init_error_reporting()  # must not raise
+
+
+class TestScrubMqttEnvelope:
+    def test_scrub_dict_redacts_sensitive_keys(self):
+        d = {"password": "secret", "user": "alice", "token": "xyz"}
+        assert _scrub_dict(d) == {"password": "[REDACTED]", "user": "alice", "token": "[REDACTED]"}
+
+    def test_scrub_dict_nested(self):
+        d = {"a": {"password": "p"}, "b": 1}
+        assert _scrub_dict(d) == {"a": {"password": "[REDACTED]"}, "b": 1}
+
+    def test_scrub_mqtt_envelope_scrubs_payload(self):
+        env = {"direction": "received", "topic": "snowbot/SN/device/DeviceMSG", "payload": {"password": "x", "battery": 80}}
+        out = _scrub_mqtt_envelope(env)
+        assert out["payload"]["password"] == "[REDACTED]"
+        assert out["payload"]["battery"] == 80
+
+
+class TestReportMqttDumpToGlitchtip:
+    def test_returns_false_when_sentry_not_initialized(self):
+        """When Sentry is not initialized, report_mqtt_dump_to_glitchtip returns False."""
+        result = report_mqtt_dump_to_glitchtip([{"direction": "sent", "topic": "t", "payload": {}}])
+        assert result is False
+
+    def test_calls_capture_message_when_sentry_initialized(self):
+        """When Sentry is initialized, report_mqtt_dump_to_glitchtip sends dump via capture_message."""
+        messages = [
+            {"direction": "sent", "topic": "snowbot/SN/app/get_controller", "payload": {}},
+            {"direction": "received", "topic": "snowbot/SN/device/DeviceMSG", "payload": {"battery": 80}},
+        ]
+        mock_sentry = MagicMock()
+        mock_sentry.is_initialized.return_value = True
+        old_sentry = sys.modules.get("sentry_sdk")
+        sys.modules["sentry_sdk"] = mock_sentry
+        try:
+            result = report_mqtt_dump_to_glitchtip(messages)
+        finally:
+            if old_sentry is None:
+                sys.modules.pop("sentry_sdk", None)
+            else:
+                sys.modules["sentry_sdk"] = old_sentry
+        assert result is True
+        mock_sentry.capture_message.assert_called_once()
+        call_args = mock_sentry.capture_message.call_args
+        assert call_args[0][0] == "MQTT dump (user-reported)"
+        assert call_args[1]["level"] == "info"
+        extras = call_args[1]["extras"]
+        assert "mqtt_dump" in extras
+        assert "message_count" in extras
+        assert extras["message_count"] == 2
+        assert "get_controller" in extras["mqtt_dump"]
+        assert "DeviceMSG" in extras["mqtt_dump"]
+        assert "80" in extras["mqtt_dump"]
+
+    def test_scrubs_sensitive_payload_before_send(self):
+        """Payload keys like password are redacted in the dump sent to GlitchTip."""
+        messages = [
+            {"direction": "received", "topic": "t", "payload": {"password": "secret", "battery": 50}},
+        ]
+        mock_sentry = MagicMock()
+        mock_sentry.is_initialized.return_value = True
+        old_sentry = sys.modules.get("sentry_sdk")
+        sys.modules["sentry_sdk"] = mock_sentry
+        try:
+            report_mqtt_dump_to_glitchtip(messages)
+        finally:
+            if old_sentry is None:
+                sys.modules.pop("sentry_sdk", None)
+            else:
+                sys.modules["sentry_sdk"] = old_sentry
+        extras = mock_sentry.capture_message.call_args[1]["extras"]
+        assert "[REDACTED]" in extras["mqtt_dump"]
+        assert "secret" not in extras["mqtt_dump"]
+        assert "50" in extras["mqtt_dump"]

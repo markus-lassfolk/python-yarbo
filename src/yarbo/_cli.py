@@ -14,11 +14,13 @@ import contextlib
 from datetime import UTC, datetime
 import json
 import logging
+import os
 from pathlib import Path
 import sys
 from typing import TYPE_CHECKING, Any
 
 from yarbo.discovery import connection_order, discover
+from yarbo.error_reporting import report_mqtt_dump_to_glitchtip
 from yarbo.exceptions import YarboError
 from yarbo.local import YarboLocalClient
 
@@ -72,6 +74,12 @@ Connection (optional; omit to auto-discover)
   --subnet CIDR Subnet to scan when discovering.
   --timeout N   Timeout in seconds (default: 5).
   --max-hosts N Max hosts per subnet (default: 512).
+
+Debug and reporting
+  --debug       Print every MQTT message sent/received (human-readable). Also YARBO_DEBUG=1.
+  --raw         With --debug, print raw one-line JSON per message.
+  --report-mqtt Capture MQTT and send a dump to GlitchTip (for support/firmware issues).
+  --log-mqtt F  Append raw MQTT (topic + payload JSON) to file F.
 
 Test (with robot on network; omit --broker/--sn to auto-discover)
   yarbo discover
@@ -162,6 +170,43 @@ def _add_connection_args(parser: argparse.ArgumentParser) -> None:
         dest="log_mqtt",
         help="Append every raw MQTT message (topic + payload JSON) to FILE.",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Print every MQTT message sent/received (human-readable). Also set by YARBO_DEBUG=1.",
+    )
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        default=False,
+        dest="debug_raw",
+        help="With --debug, print raw one-line JSON per message (no formatting).",
+    )
+    parser.add_argument(
+        "--report-mqtt",
+        action="store_true",
+        dest="report_mqtt",
+        help="Capture MQTT traffic for this run and send a dump to GlitchTip (for support).",
+    )
+
+
+def _apply_debug_env(args: argparse.Namespace) -> None:
+    """Set args.debug / args.debug_raw from YARBO_DEBUG / YARBO_DEBUG_RAW if not already set."""
+    if getattr(args, "debug", False) is False:
+        args.debug = os.environ.get("YARBO_DEBUG", "").lower() in ("1", "true", "yes")
+    if getattr(args, "debug_raw", False) is False:
+        args.debug_raw = os.environ.get("YARBO_DEBUG_RAW", "").lower() in ("1", "true", "yes")
+
+
+def _mqtt_capture_max(args: argparse.Namespace) -> int:
+    return 1000 if getattr(args, "report_mqtt", False) else 0
+
+
+def _maybe_report_mqtt(args: argparse.Namespace, client: YarboLocalClient) -> None:
+    """If --report-mqtt was set, send captured MQTT dump to GlitchTip."""
+    if getattr(args, "report_mqtt", False):
+        report_mqtt_dump_to_glitchtip(client.get_captured_mqtt())
 
 
 async def _with_client(
@@ -174,6 +219,9 @@ async def _with_client(
             sn=args.serial,
             port=getattr(args, "port", 1883),
             mqtt_log_path=getattr(args, "log_mqtt", None),
+            debug=getattr(args, "debug", False),
+            debug_raw=getattr(args, "debug_raw", False),
+            mqtt_capture_max=_mqtt_capture_max(args),
         )
         await client.connect()
         try:
@@ -201,6 +249,9 @@ async def _with_client(
                 port=ep.port,
                 sn=ep.sn,
                 mqtt_log_path=getattr(args, "log_mqtt", None),
+                debug=getattr(args, "debug", False),
+                debug_raw=getattr(args, "debug_raw", False),
+                mqtt_capture_max=_mqtt_capture_max(args),
             )
             await client.connect()
         except (YarboError, OSError, TimeoutError) as e:
@@ -247,6 +298,11 @@ def _main() -> None:  # noqa: PLR0915
         default=512,
         metavar="N",
         help="Max hosts per subnet (default: 512).",
+    )
+    discover_parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Verbose discovery output. Also set by YARBO_DEBUG=1.",
     )
 
     status_parser = subparsers.add_parser(
@@ -352,6 +408,9 @@ def _main() -> None:  # noqa: PLR0915
         parser.print_help()
         sys.exit(0)
 
+    # Env can enable debug so troubleshooting works without passing --debug every time.
+    _apply_debug_env(args)
+
     handlers = {
         "discover": _run_discover,
         "status": _run_status,
@@ -385,7 +444,8 @@ def _main() -> None:  # noqa: PLR0915
 
 # ----- Discovery (no client) -----
 async def _run_discover(args: argparse.Namespace) -> None:
-    logging.basicConfig(level=logging.WARNING, format="%(message)s")
+    level = logging.DEBUG if getattr(args, "debug", False) else logging.WARNING
+    logging.basicConfig(level=level, format="%(message)s")
     if args.subnet:
         print(f"Scanning {args.subnet} for Yarbo brokers...")
     else:
@@ -433,6 +493,7 @@ async def _run_status(args: argparse.Namespace) -> None:
         else:
             print("Error: connected but no telemetry received within timeout.")
             sys.exit(1)
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -561,6 +622,7 @@ async def _run_battery(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
         print(f"{status.battery}%" if status and status.battery is not None else "?")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -574,6 +636,7 @@ async def _run_telemetry(args: argparse.Namespace) -> None:
                 print(f"  Battery: {bat}%  State: {state}")
         except asyncio.CancelledError:
             break
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -581,6 +644,7 @@ async def _run_lights_on(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         await client.lights_on()
         print("Lights on.")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -588,6 +652,7 @@ async def _run_lights_off(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         await client.lights_off()
         print("Lights off.")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -595,6 +660,7 @@ async def _run_buzzer(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         await client.buzzer(state=0 if getattr(args, "stop", False) else 1)
         print("Buzzer stopped." if getattr(args, "stop", False) else "Buzzer on.")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -602,6 +668,7 @@ async def _run_chute(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         await client.set_chute(vel=args.vel)
         print(f"Chute set to {args.vel}.")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -609,6 +676,7 @@ async def _run_return_to_dock(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         result = await client.return_to_dock()
         print("Return to dock sent.", result)
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -619,6 +687,7 @@ async def _run_plans(args: argparse.Namespace) -> None:
             print(f"  {p.plan_id}: {p.plan_name}")
         if not plans:
             print("No plans.")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -626,6 +695,7 @@ async def _run_plan_start(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         result = await client.start_plan(plan_id=args.plan_id)
         print("Plan started.", result)
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -633,6 +703,7 @@ async def _run_plan_stop(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         result = await client.stop_plan()
         print("Plan stopped.", result)
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -640,6 +711,7 @@ async def _run_plan_pause(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         result = await client.pause_plan()
         print("Plan paused.", result)
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -647,6 +719,7 @@ async def _run_plan_resume(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         result = await client.resume_plan()
         print("Plan resumed.", result)
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -657,6 +730,7 @@ async def _run_schedules(args: argparse.Namespace) -> None:
             print(f"  {s.schedule_id}: {s}")
         if not schedules:
             print("No schedules.")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -664,6 +738,7 @@ async def _run_manual_start(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         await client.start_manual_drive()
         print("Manual drive started.")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -671,6 +746,7 @@ async def _run_velocity(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         await client.set_velocity(linear=args.linear, angular=args.angular)
         print(f"Velocity set: linear={args.linear}, angular={args.angular}.")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -678,6 +754,7 @@ async def _run_roller(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         await client.set_roller(speed=args.speed)
         print(f"Roller speed set to {args.speed}.")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -687,6 +764,7 @@ async def _run_manual_stop(args: argparse.Namespace) -> None:
         emergency = args.mode == "emergency"
         await client.stop_manual_drive(hard=hard, emergency=emergency)
         print(f"Manual drive stopped ({args.mode}).")
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -694,6 +772,7 @@ async def _run_global_params(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
         params = await asyncio.wait_for(client.get_global_params(), timeout=args.timeout)
         print(json.dumps(params, indent=2))
+        _maybe_report_mqtt(args, client)
         break
 
 
@@ -708,6 +787,7 @@ async def _run_map(args: argparse.Namespace) -> None:
             print(f"Map written to {out}.")
         else:
             print(s)
+        _maybe_report_mqtt(args, client)
         break
 
 
