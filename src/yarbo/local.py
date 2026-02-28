@@ -80,7 +80,7 @@ class YarboLocalClient:
         await client.disconnect()
 
     Args:
-        broker:         MQTT broker IP (from discover() or set explicitly; no default).
+        broker:         MQTT broker IP (from discover() or set explicitly; required).
         sn:             Robot serial number.
         port:           Broker port (default 1883).
         auto_controller: If ``True`` (default), automatically send
@@ -94,7 +94,7 @@ class YarboLocalClient:
 
     def __init__(
         self,
-        broker: str = LOCAL_BROKER_DEFAULT,
+        broker: str,
         sn: str = "",
         port: int = LOCAL_PORT,
         auto_controller: bool = True,
