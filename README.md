@@ -51,7 +51,7 @@ import asyncio
 from yarbo import YarboClient
 
 async def main():
-    async with YarboClient(broker="192.168.1.24", sn="24400102L8HO5227") as client:
+    async with YarboClient(broker="<rover-ip>", sn="YOUR_SERIAL") as client:
         # Get a telemetry snapshot
         status = await client.get_status()
         if status:
@@ -80,7 +80,7 @@ asyncio.run(main())
 ```python
 from yarbo import YarboClient
 
-client = YarboClient.connect_sync(broker="192.168.1.24", sn="24400102L8HO5227")
+client = YarboClient.connect_sync(broker="<rover-ip>", sn="YOUR_SERIAL")
 client.lights_on()
 client.buzzer()
 client.disconnect()
@@ -94,7 +94,7 @@ from yarbo import discover_yarbo, YarboClient
 
 async def main():
     print("Scanning for Yarbo robots...")
-    robots = await discover_yarbo()
+    robots = await discover_yarbo()  # scans host's local networks; or pass subnet="192.0.2.0/24"
 
     if not robots:
         print("No robots found")
@@ -228,8 +228,8 @@ Recommendations:
 This library was built from reverse-engineering the Yarbo Flutter app and
 live packet captures. Key protocol facts:
 
-- **MQTT broker**: Local EMQX at `192.168.1.24:1883` or `192.168.1.55:1883`
-  (check which IP your robot uses — both have been observed in production)
+- **MQTT broker**: Local EMQX (port 1883). Use `yarbo discover` (scans host networks) or
+  `yarbo discover --subnet <CIDR>` to find Rover/DC endpoints; IPs are DHCP-assigned.
 - **Payload encoding**: `zlib.compress(json.dumps(payload).encode())`
   (exception: `heart_beat` topic uses plain uncompressed JSON)
 - **Controller handshake**: `get_controller` must be sent before action commands

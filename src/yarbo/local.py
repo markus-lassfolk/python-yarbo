@@ -6,7 +6,7 @@ requiring a cloud account. All operations are local and work offline.
 
 Prerequisites:
 - The host machine must be on the same WiFi as the robot.
-- The robot's EMQX broker IP must be known (default: 192.168.1.24).
+- The robot's EMQX broker IP must be known (use :func:`yarbo.discover` or set explicitly).
 - ``paho-mqtt`` must be installed: ``pip install 'python-yarbo'``.
 
 Protocol notes (from live captures):
@@ -17,9 +17,9 @@ Protocol notes (from live captures):
 - Commands are generally fire-and-forget; responses on ``data_feedback``.
 
 Transport limitations (NOT YET IMPLEMENTED):
-- Local REST API (``192.168.8.8:8088``) — direct HTTP REST on the robot network.
+- Local REST API (robot LAN, port 8088) — direct HTTP REST on the robot network.
   Endpoints are unknown; requires further sniffing or SSH exploration.
-- Local TCP JSON (``192.168.8.1:22220``) — a JSON-over-TCP protocol discovered
+- Local TCP JSON (robot LAN, port 22220) — a JSON-over-TCP protocol discovered
   in libapp.so (uses ``com`` field with ``@n`` namespace notation).
 - This module is MQTT-only. Both unimplemented transports are TODO items.
 
@@ -66,7 +66,7 @@ class YarboLocalClient:
 
     Example (async context manager)::
 
-        async with YarboLocalClient(broker="192.168.1.24", sn="24400102L8HO5227") as client:
+        async with YarboLocalClient(broker="<rover-ip>", sn="YOUR_SERIAL") as client:
             await client.lights_on()
             await client.buzzer(state=1)
             async for telemetry in client.watch_telemetry():
@@ -74,13 +74,13 @@ class YarboLocalClient:
 
     Example (manual lifecycle)::
 
-        client = YarboLocalClient(broker="192.168.1.24", sn="24400102L8HO5227")
+        client = YarboLocalClient(broker="<rover-ip>", sn="YOUR_SERIAL")
         await client.connect()
         await client.lights_on()
         await client.disconnect()
 
     Args:
-        broker:         MQTT broker IP address.
+        broker:         MQTT broker IP (from discover() or set explicitly; no default).
         sn:             Robot serial number.
         port:           Broker port (default 1883).
         auto_controller: If ``True`` (default), automatically send
@@ -93,12 +93,20 @@ class YarboLocalClient:
         sn: str = "",
         port: int = LOCAL_PORT,
         auto_controller: bool = True,
+        mqtt_log_path: str | None = None,
     ) -> None:
+        if not broker:
+            raise ValueError(
+                "broker IP must be set to the robot's EMQX broker address; "
+                "use yarbo.discovery.discover() to find it automatically."
+            )
         self._broker = broker
         self._sn = sn
         self._port = port
         self._auto_controller = auto_controller
-        self._transport = MqttTransport(broker=broker, sn=sn, port=port)
+        self._transport = MqttTransport(
+            broker=broker, sn=sn, port=port, mqtt_log_path=mqtt_log_path
+        )
         self._controller_acquired = False
 
     # ------------------------------------------------------------------
@@ -672,7 +680,8 @@ class YarboLocalClient:
         )
         if msg is None:
             return {}
-        return dict(msg.get("data", {}) or {})
+        data = msg.get("data", {}) or {}
+        return data if isinstance(data, dict) else {"data": data}
 
     async def set_global_params(self, params: dict[str, Any]) -> YarboCommandResult:
         """Save global robot parameters (``cmd_save_para``).
@@ -717,7 +726,8 @@ class YarboLocalClient:
         )
         if msg is None:
             return {}
-        return dict(msg.get("data", {}) or {})
+        data = msg.get("data", {}) or {}
+        return data if isinstance(data, dict) else {"data": data}
 
     # ------------------------------------------------------------------
     # Plan creation
@@ -786,7 +796,7 @@ class YarboLocalClient:
 
         Example::
 
-            client = YarboLocalClient.connect_sync(broker="192.168.1.24", sn="24400102...")
+            client = YarboLocalClient.connect_sync(broker="<rover-ip>", sn="YOUR_SERIAL")
             client.lights_on()
             client.buzzer()
             client.disconnect()

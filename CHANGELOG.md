@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **CLI (`yarbo`)** — full-featured command-line interface
+  - `yarbo discover` — find Rover/DC brokers (optional `--subnet`, `--max-hosts`)
+  - `yarbo status` — connect with primary/fallback, print full telemetry (parsed + all MQTT keys)
+  - `yarbo battery`, `yarbo telemetry` — status and live stream
+  - `yarbo lights-on`, `yarbo lights-off`, `yarbo buzzer`, `yarbo chute`, `yarbo return-to-dock`
+  - `yarbo plans`, `yarbo plan-start`, `yarbo plan-stop`, `yarbo plan-pause`, `yarbo plan-resume`
+  - `yarbo schedules`, `yarbo manual-start`, `yarbo velocity`, `yarbo roller`, `yarbo manual-stop`
+  - `yarbo global-params`, `yarbo map` — read-only data
+  - All commands support `--broker` / `--sn` or auto-discover with primary/fallback
+- **Discovery**
+  - Auto-detect local subnets when `subnet` omitted (Linux/macOS/Windows via `ip`/`ifconfig`/`ipconfig`)
+  - Skip large subnets (prefixlen &lt; 20) by default to avoid Docker /16 scans
+  - Cap hosts per subnet (default 512, `--max-hosts` to increase)
+  - DC classification via hostname hint (`YARBO`) when ARP gives same MAC for both IPs
+  - Exactly one endpoint recommended (DC when both Rover and DC; else first)
+  - `connection_order(endpoints)` — try order for primary/fallback (e.g. Home Assistant)
+- **Telemetry**
+  - Extra parsed fields: name, head_serial_number, battery_status, rtk_status, chute_angle, odom_confidence, car_controller, wireless_charge_*, route_priority, last_updated
+  - `YarboTelemetry.all_mqtt_values()` — flattened dict of every MQTT payload key (dotted paths)
+  - `flatten_mqtt_payload()` in `models` — flatten nested DeviceMSG for full visibility
+  - `yarbo status` prints parsed fields plus "All MQTT keys" section
+- **Security / CI**
+  - pip-audit: use `pip freeze` filtered (awk) + `-r requirements-audit.txt --strict` (no `--skip-pkg`)
+  - Test isolation: `monkeypatch.delenv("YARBO_MQTT_USERNAME")` in `test_default_username`
+- **Local/get_map**
+  - Safer handling when `get_map` or `read_global_params` response `data` is not a dict (return `{"data": data}`)
+
+### Changed
+
+- Discovery: `subnet` is optional; when omitted, host local networks are scanned
+- Docs/README: subnet optional, connection_order and failover pattern, CLI usage
+
 ## [0.1.0] — 2026-02-26
 
 ### Added
@@ -60,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Confirmed: topics `snowbot/{SN}/app/{cmd}` and `snowbot/{SN}/device/{feedback}`
 - Confirmed: light keys `led_head`, `led_left_w`, `led_right_w`, `body_left_r`,
   `body_right_r`, `tail_left_r`, `tail_right_r` (integers 0–255)
-- Local broker: EMQX at 192.168.1.24:1883 (confirmed from live captures)
+- Local broker: EMQX on port 1883 (use `yarbo discover --subnet <CIDR>` to find broker IP)
 
 [Unreleased]: https://github.com/markus-lassfolk/python-yarbo/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/markus-lassfolk/python-yarbo/releases/tag/v0.1.0

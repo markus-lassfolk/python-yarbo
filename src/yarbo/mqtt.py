@@ -24,7 +24,10 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import logging
+from pathlib import Path
+import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -70,7 +73,7 @@ class MqttTransport:
 
     Example::
 
-        transport = MqttTransport(broker="192.168.1.24", sn="24400102L8HO5227")
+        transport = MqttTransport(broker="<rover-ip>", sn="YOUR_SERIAL")
         await transport.connect()
         await transport.publish("get_controller", {})
         await transport.publish("light_ctrl", {"led_head": 255, "led_left_w": 255})
@@ -92,6 +95,7 @@ class MqttTransport:
         qos: int = 0,
         tls: bool = False,
         tls_ca_certs: str | None = None,
+        mqtt_log_path: str | None = None,
     ) -> None:
         self._broker = broker
         self._sn = sn
@@ -102,6 +106,8 @@ class MqttTransport:
         self._qos = qos
         self._tls = tls
         self._tls_ca_certs = tls_ca_certs
+        self._mqtt_log_path: str | None = mqtt_log_path
+        self._mqtt_log_lock: threading.Lock = threading.Lock()
 
         # paho Client — typed via TYPE_CHECKING import to avoid hard dependency
         self._client: _paho.Client | None = None
@@ -468,6 +474,20 @@ class MqttTransport:
                 msg.topic,
                 str(payload)[:160],
             )
+            # Optional: log every raw MQTT message (topic + payload) for comparison with CLI output.
+            if self._mqtt_log_path:
+                with self._mqtt_log_lock:
+                    try:
+                        with Path(self._mqtt_log_path).open("a", encoding="utf-8") as f:
+                            f.write(
+                                json.dumps(
+                                    {"topic": getattr(msg, "topic", ""), "payload": payload},
+                                    ensure_ascii=False,
+                                )
+                                + "\n"
+                            )
+                    except OSError as e:
+                        logger.warning("Failed to write MQTT log: %s", e)
             # Track heartbeat reception time (float write is atomic in CPython).
             if Topic.leaf(msg.topic) == TOPIC_LEAF_HEART_BEAT:
                 self._last_heartbeat = time.time()

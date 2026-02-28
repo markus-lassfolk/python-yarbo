@@ -45,6 +45,9 @@ dev = [
     "types-aiofiles",
 ]
 
+[project.scripts]
+yarbo = "yarbo._cli:main"
+
 [project.urls]
 Homepage = "https://github.com/markus-lassfolk/python-yarbo"
 Repository = "https://github.com/markus-lassfolk/python-yarbo"

@@ -6,7 +6,7 @@ local and cloud MQTT transports.
 
 Discovery sources:
 - Blutter ASM analysis of the Flutter app (libapp.so)
-- Live packet captures on the local EMQX broker at 192.168.1.24 / 192.168.1.55
+- Live packet captures on the local EMQX broker (use discover() for broker IP)
 - yarbo-reversing/docs/COMMAND_CATALOGUE.md
 
 Transport support matrix
@@ -29,11 +29,11 @@ from __future__ import annotations
 # Local broker (same WiFi as robot)
 # ---------------------------------------------------------------------------
 
-#: Default local EMQX broker address (Yarbo's embedded broker, HaLow network).
-LOCAL_BROKER_DEFAULT = "192.168.1.24"
+#: Default local EMQX broker address. Empty = no default; use discover() or set explicitly.
+LOCAL_BROKER_DEFAULT = ""
 
-#: Secondary local EMQX broker IP (also observed in the wild on HaLow networks).
-LOCAL_BROKER_SECONDARY = "192.168.1.55"
+#: Reserved for discovery candidate list (unused; discovery uses subnet scan only).
+LOCAL_BROKER_SECONDARY = ""
 
 #: Local broker plaintext port.
 LOCAL_PORT = 1883
