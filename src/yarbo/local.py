@@ -833,7 +833,7 @@ class YarboLocalClient:
             song_id: Song identifier (reserved, default 0).
         """
         await self._ensure_controller()
-        await self._transport.publish("set_sound_param", {"vol": volume})
+        await self._transport.publish("set_sound_param", {"vol": volume, "songId": song_id})
 
     async def play_song(self, song_id: int) -> None:
         """
