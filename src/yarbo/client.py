@@ -77,7 +77,7 @@ class YarboClient:
     :class:`~yarbo.local.YarboLocalClient`.
 
     Args:
-        broker:    Local MQTT broker IP (from discover() or set explicitly; no default).
+        broker:    Local MQTT broker IP (from discover() or set explicitly; required).
         sn:        Robot serial number.
         port:      MQTT broker port (default 1883).
         username:  Cloud account email (optional — for cloud REST features only).
@@ -88,7 +88,7 @@ class YarboClient:
 
     def __init__(
         self,
-        broker: str = LOCAL_BROKER_DEFAULT,
+        broker: str,
         sn: str = "",
         port: int = LOCAL_PORT,
         username: str = "",
@@ -358,7 +358,7 @@ class YarboClient:
     @classmethod
     def connect_sync(
         cls,
-        broker: str = LOCAL_BROKER_DEFAULT,
+        broker: str,
         sn: str = "",
         port: int = LOCAL_PORT,
     ) -> _SyncYarboLocalClient:

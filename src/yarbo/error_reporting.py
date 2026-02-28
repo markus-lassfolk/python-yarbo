@@ -128,7 +128,7 @@ def report_mqtt_dump_to_glitchtip(
     sentry_sdk.capture_message(
         "MQTT dump (user-reported)",
         level="info",
-        extras={"mqtt_dump": dump, "message_count": len(scrubbed)},
+        extra={"mqtt_dump": dump, "message_count": len(scrubbed)},
     )
     logger.info("MQTT dump sent to GlitchTip (%d messages)", len(scrubbed))
     return True

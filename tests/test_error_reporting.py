@@ -146,13 +146,13 @@ class TestReportMqttDumpToGlitchtip:
         call_args = mock_sentry.capture_message.call_args
         assert call_args[0][0] == "MQTT dump (user-reported)"
         assert call_args[1]["level"] == "info"
-        extras = call_args[1]["extras"]
-        assert "mqtt_dump" in extras
-        assert "message_count" in extras
-        assert extras["message_count"] == 2
-        assert "get_controller" in extras["mqtt_dump"]
-        assert "DeviceMSG" in extras["mqtt_dump"]
-        assert "80" in extras["mqtt_dump"]
+        extra = call_args[1]["extra"]
+        assert "mqtt_dump" in extra
+        assert "message_count" in extra
+        assert extra["message_count"] == 2
+        assert "get_controller" in extra["mqtt_dump"]
+        assert "DeviceMSG" in extra["mqtt_dump"]
+        assert "80" in extra["mqtt_dump"]
 
     def test_scrubs_sensitive_payload_before_send(self):
         """Payload keys like password are redacted in the dump sent to GlitchTip."""
@@ -170,7 +170,7 @@ class TestReportMqttDumpToGlitchtip:
                 sys.modules.pop("sentry_sdk", None)
             else:
                 sys.modules["sentry_sdk"] = old_sentry
-        extras = mock_sentry.capture_message.call_args[1]["extras"]
-        assert "[REDACTED]" in extras["mqtt_dump"]
-        assert "secret" not in extras["mqtt_dump"]
-        assert "50" in extras["mqtt_dump"]
+        extra = mock_sentry.capture_message.call_args[1]["extra"]
+        assert "[REDACTED]" in extra["mqtt_dump"]
+        assert "secret" not in extra["mqtt_dump"]
+        assert "50" in extra["mqtt_dump"]
