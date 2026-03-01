@@ -1,4 +1,4 @@
-"""Tests for yarbo.error_reporting — _scrub_event, init_error_reporting, report_mqtt_dump_to_glitchtip."""
+"""Tests for error_reporting: _scrub_event, init, report_mqtt_dump."""
 
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ class TestReportMqttDumpToGlitchtip:
         assert result is False
 
     def test_calls_capture_message_when_sentry_initialized(self):
-        """When Sentry is initialized, report_mqtt_dump_to_glitchtip sends dump via capture_message."""
+        """When Sentry is initialized, sends dump via capture_message."""
         messages = [
             {"direction": "sent", "topic": "snowbot/SN/app/get_controller", "payload": {}},
             {
