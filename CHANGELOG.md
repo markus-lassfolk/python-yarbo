@@ -7,39 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [2026.3.10] — 2026-03-01
+
+First public release. Local MQTT control only — cloud integration is experimental and not fully tested.
+
 ### Added
 
 - **CLI (`yarbo`)** — full-featured command-line interface
   - `yarbo discover` — find Rover/DC brokers (optional `--subnet`, `--max-hosts`)
-  - `yarbo status` — connect with primary/fallback, print full telemetry (parsed + all MQTT keys)
+  - `yarbo status` — connect with primary/fallback, print full telemetry
   - `yarbo battery`, `yarbo telemetry` — status and live stream
   - `yarbo lights-on`, `yarbo lights-off`, `yarbo buzzer`, `yarbo chute`, `yarbo return-to-dock`
   - `yarbo plans`, `yarbo plan-start`, `yarbo plan-stop`, `yarbo plan-pause`, `yarbo plan-resume`
   - `yarbo schedules`, `yarbo manual-start`, `yarbo velocity`, `yarbo roller`, `yarbo manual-stop`
   - `yarbo global-params`, `yarbo map` — read-only data
-  - All commands support `--broker` / `--sn` or auto-discover with primary/fallback
-- **Discovery**
-  - Auto-detect local subnets when `subnet` omitted (Linux/macOS/Windows via `ip`/`ifconfig`/`ipconfig`)
-  - Skip large subnets (prefixlen &lt; 20) by default to avoid Docker /16 scans
-  - Cap hosts per subnet (default 512, `--max-hosts` to increase)
-  - DC classification via hostname hint (`YARBO`) when ARP gives same MAC for both IPs
-  - Exactly one endpoint recommended (DC when both Rover and DC; else first)
-  - `connection_order(endpoints)` — try order for primary/fallback (e.g. Home Assistant)
-- **Telemetry**
-  - Extra parsed fields: name, head_serial_number, battery_status, rtk_status, chute_angle, odom_confidence, car_controller, wireless_charge_*, route_priority, last_updated
-  - `YarboTelemetry.all_mqtt_values()` — flattened dict of every MQTT payload key (dotted paths)
-  - `flatten_mqtt_payload()` in `models` — flatten nested DeviceMSG for full visibility
-  - `yarbo status` prints parsed fields plus "All MQTT keys" section
-- **Security / CI**
-  - pip-audit: use `pip freeze` filtered (awk) + `-r requirements-audit.txt --strict` (no `--skip-pkg`)
-  - Test isolation: `monkeypatch.delenv("YARBO_MQTT_USERNAME")` in `test_default_username`
-- **Local/get_map**
-  - Safer handling when `get_map` or `read_global_params` response `data` is not a dict (return `{"data": data}`)
+  - All commands support `--broker` / `--sn` or auto-discover
+- **Discovery** — auto-detect local subnets, skip large ranges, DC/Rover classification
+- **Telemetry** — full MQTT telemetry parsing with 40+ fields
+- **25+ typed command methods** with full docstrings and parameter validation
+  - Mowing: `start_plan`, `stop_plan`, `pause_plan`, `resume_plan`
+  - Configuration: `set_velocity`, `set_lights`, `set_person_detect`, `set_ignore_obstacles`
+  - Snow: `push_snow_dir`, `set_chute`, `set_chute_steering_work`
+  - Maintenance: `firmware_update_now/tonight/later`, `check_camera_status`, `camera_calibration`
+  - Head-specific: `set_roller_speed`, `set_blade_height`, `set_blade_speed`
+  - Data: `get_map`, `get_saved_wifi_list`, `get_status`, `get_global_params`
+- **Destructive operation safeguards** — `delete_plan`, `delete_all_plans`, `erase_map`, `map_recovery` require `confirm=True`
+- **Head-type validation** — commands validated against current head type (mower/snow blower/sweeper)
+- **Debug logging** — optional verbose MQTT logging for troubleshooting
 
-### Changed
+### Security
 
-- Discovery: `subnet` is optional; when omitted, host local networks are scanned
-- Docs/README: subnet optional, connection_order and failover pattern, CLI usage
+- **TLS certificate validation enforced** for cloud MQTT connections (system trust store by default)
+- Discovery future race condition fixed (multiple heartbeats no longer cause `InvalidStateError`)
+- `YarboAuth` now implements context manager for proper session lifecycle (`async with`)
+- Logout failures logged instead of silently swallowed
+
+### Note
+
+> **Cloud integration is experimental.** The cloud MQTT and HTTP API modules (`cloud_mqtt.py`, `cloud.py`, `auth.py`) are included for completeness but have not been tested against live Yarbo cloud infrastructure. Use local MQTT control for production. Cloud support will be fully validated in a future release.
+
 
 ## [0.1.0] — 2026-02-26
 

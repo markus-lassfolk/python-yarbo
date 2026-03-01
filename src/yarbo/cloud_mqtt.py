@@ -60,9 +60,8 @@ class YarboCloudMqttClient(YarboLocalClient):
         port:           Broker TLS port (default: 8883).
         auto_controller: Send ``get_controller`` automatically (default True).
         tls_ca_certs:   Path to CA certificate bundle for server verification.
-                        When ``None`` (default), server certificate is not
-                        verified (suitable for testing; use a CA bundle in
-                        production).
+                        When ``None`` (default), the system trust store is used
+                        to validate the server certificate.
 
     Raises:
         ValueError: If *password* is empty (no value passed and

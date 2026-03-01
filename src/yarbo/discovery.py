@@ -320,7 +320,12 @@ async def _verify_yarbo_heartbeat(host: str, port: int, timeout: float) -> tuple
                 if "working_state" in payload:
                     parts = msg.topic.split("/")
                     sn = parts[1] if len(parts) >= 2 else ""
-                    loop.call_soon_threadsafe(done.set_result, (True, sn))
+
+                    def _safe_set(fut: asyncio.Future, val: tuple) -> None:  # type: ignore[type-arg]
+                        if not fut.done():
+                            fut.set_result(val)
+
+                    loop.call_soon_threadsafe(_safe_set, done, (True, sn))
             except (json.JSONDecodeError, TypeError):
                 pass
 
