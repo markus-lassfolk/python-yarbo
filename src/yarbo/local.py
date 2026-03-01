@@ -107,13 +107,16 @@ class YarboLocalClient:
         self._sn = sn
         self._port = port
         self._auto_controller = auto_controller
-        self._transport = MqttTransport(broker=broker, sn=sn, port=port)
+        self._transport = MqttTransport(
+            broker=broker,
+            sn=sn,
+            port=port,
+            mqtt_log_path=mqtt_log_path,
+            debug=debug,
+            debug_raw=debug_raw,
+            mqtt_capture_max=mqtt_capture_max,
+        )
         self._controller_acquired = False
-        self._mqtt_log_path = mqtt_log_path
-        self._debug = debug
-        self._debug_raw = debug_raw
-        self._mqtt_capture_max = mqtt_capture_max
-        self._captured_mqtt: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Context manager
@@ -160,7 +163,7 @@ class YarboLocalClient:
 
     def get_captured_mqtt(self) -> list[dict[str, Any]]:
         """Return captured MQTT messages (populated when mqtt_capture_max > 0)."""
-        return list(self._captured_mqtt)
+        return self._transport.get_captured_mqtt()
 
     @property
     def is_connected(self) -> bool:
@@ -1247,7 +1250,7 @@ class YarboLocalClient:
                 command_name=cmd,
                 _queue=wait_queue,
             )
-            return msg.get("data", {}) or {} if isinstance(msg, dict) else {}
+            return (msg.get("data", {}) or {}) if isinstance(msg, dict) else {}
         except Exception:
             self._transport.release_queue(wait_queue)
             raise
