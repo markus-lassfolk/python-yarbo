@@ -1215,8 +1215,7 @@ class YarboLocalClient:
             )
             return msg if isinstance(msg, dict) else {}
         except Exception:
-            with contextlib.suppress(ValueError):
-                self._transport._message_queues.remove(wait_queue)
+            self._transport.release_queue(wait_queue)
             raise
 
     # ------------------------------------------------------------------
