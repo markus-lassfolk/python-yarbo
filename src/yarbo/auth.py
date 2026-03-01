@@ -133,8 +133,8 @@ class YarboAuth:
             return
         try:
             await self._post(_LOGOUT_PATH, {})
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Logout request failed (token cleared locally): %s", exc)
         finally:
             self.access_token = ""
             self.refresh_token = ""
@@ -210,9 +210,21 @@ class YarboAuth:
         self.expires_at = time.time() + expires_in
         self.sn_list = data.get("snList", [])
 
+    async def close(self) -> None:
+        """Close the internal HTTP session if we own it."""
+        if self._owns_session and self._session and not self._session.closed:
+            await self._session.close()
+
+    async def __aenter__(self) -> YarboAuth:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()
+
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession()
+            self._owns_session = True
         return self._session
 
     async def _post(
