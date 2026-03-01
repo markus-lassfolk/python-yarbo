@@ -884,9 +884,9 @@ class YarboLocalClient:
     # Plans & scheduling
     # ------------------------------------------------------------------
 
-    async def start_plan(self, plan_id: int, percent: int = 100) -> None:
+    async def start_plan_direct(self, plan_id: int, percent: int = 100) -> None:
         """
-        Start a work plan by ID.
+        Start a work plan by numeric ID (direct command, no response).
 
         Args:
             plan_id: Numeric ID of the plan to execute.
@@ -920,9 +920,9 @@ class YarboLocalClient:
         """
         return await self._request_data_feedback("read_all_plan", {}, timeout)
 
-    async def delete_plan(self, plan_id: int) -> None:
+    async def delete_plan_direct(self, plan_id: int) -> None:
         """
-        Delete a plan by ID.
+        Delete a plan by numeric ID (direct command, no response).
 
         Args:
             plan_id: Numeric plan ID to delete.
@@ -935,8 +935,8 @@ class YarboLocalClient:
         await self._ensure_controller()
         await self._transport.publish("del_all_plan", {})
 
-    async def pause_plan(self) -> None:
-        """Pause the currently running plan."""
+    async def pause_planning(self) -> None:
+        """Pause the currently running plan (direct command, no response)."""
         await self._ensure_controller()
         await self._transport.publish("planning_paused", {})
 

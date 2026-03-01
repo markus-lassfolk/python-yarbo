@@ -272,9 +272,9 @@ class YarboClient:
 
     # -- Plans & scheduling --
 
-    async def start_plan(self, plan_id: int, percent: int = 100) -> None:
-        """Start a work plan by ID."""
-        await self._local.start_plan(plan_id, percent)
+    async def start_plan_direct(self, plan_id: int, percent: int = 100) -> None:
+        """Start a work plan by numeric ID (direct command, no response)."""
+        await self._local.start_plan_direct(plan_id, percent)
 
     async def read_plan(self, plan_id: int, timeout: float = 5.0) -> dict[str, Any]:
         """Request plan detail and await the data_feedback response."""
@@ -284,17 +284,17 @@ class YarboClient:
         """Request all plan summaries and await the data_feedback response."""
         return await self._local.read_all_plans(timeout)
 
-    async def delete_plan(self, plan_id: int) -> None:
-        """Delete a plan by ID."""
-        await self._local.delete_plan(plan_id)
+    async def delete_plan_direct(self, plan_id: int) -> None:
+        """Delete a plan by numeric ID (direct command, no response)."""
+        await self._local.delete_plan_direct(plan_id)
 
     async def delete_all_plans(self) -> None:
         """Delete all stored plans from the robot."""
         await self._local.delete_all_plans()
 
-    async def pause_plan(self) -> None:
-        """Pause the currently running plan."""
-        await self._local.pause_plan()
+    async def pause_planning(self) -> None:
+        """Pause the currently running plan (direct command, no response)."""
+        await self._local.pause_planning()
 
     async def in_plan_action(self, action: str) -> None:
         """Send an in-plan action command."""

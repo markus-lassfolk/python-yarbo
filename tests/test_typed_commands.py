@@ -68,10 +68,10 @@ def mock_local():
             "set_camera",
             "set_person_detect",
             "set_usb",
-            "start_plan",
-            "delete_plan",
+            "start_plan_direct",
+            "delete_plan_direct",
             "delete_all_plans",
-            "pause_plan",
+            "pause_planning",
             "in_plan_action",
             "start_waypoint",
             "save_charging_point",
@@ -218,11 +218,11 @@ class TestCameraDetection:
 @pytest.mark.asyncio
 class TestPlansScheduling:
     async def test_start_plan_default_percent(self, client, mock_transport):
-        await client.start_plan(7)
+        await client.start_plan_direct(7)
         mock_transport.publish.assert_called_once_with("start_plan", {"planId": 7, "percent": 100})
 
     async def test_start_plan_custom_percent(self, client, mock_transport):
-        await client.start_plan(3, percent=50)
+        await client.start_plan_direct(3, percent=50)
         mock_transport.publish.assert_called_once_with("start_plan", {"planId": 3, "percent": 50})
 
     async def test_read_plan(self, client, mock_transport):
@@ -242,7 +242,7 @@ class TestPlansScheduling:
         assert isinstance(result, dict)
 
     async def test_delete_plan(self, client, mock_transport):
-        await client.delete_plan(5)
+        await client.delete_plan_direct(5)
         mock_transport.publish.assert_called_once_with("del_plan", {"planId": 5})
 
     async def test_delete_all_plans(self, client, mock_transport):
@@ -250,7 +250,7 @@ class TestPlansScheduling:
         mock_transport.publish.assert_called_once_with("del_all_plan", {})
 
     async def test_pause_plan(self, client, mock_transport):
-        await client.pause_plan()
+        await client.pause_planning()
         mock_transport.publish.assert_called_once_with("planning_paused", {})
 
     async def test_in_plan_action(self, client, mock_transport):
@@ -399,7 +399,7 @@ class TestDiagnostics:
 class TestDataFeedbackTimeout:
     async def test_timeout_returns_empty_dict(self, client, mock_transport):
         """On timeout (None from wait_for_message), returns {}."""
-        mock_transport.wait_for_message = AsyncMock(return_value="unexpected")
+        mock_transport.wait_for_message = AsyncMock(return_value=None)
         result = await client.read_plan(1)
         assert result == {}
 
@@ -439,8 +439,8 @@ class TestYarboClientDelegationTyped:
 
     async def test_start_plan_delegates(self, mock_local):
         async with YarboClient(broker="192.168.1.24", sn="TEST") as c:
-            await c.start_plan(4, percent=80)
-        mock_local.start_plan.assert_called_once_with(4, 80)
+            await c.start_plan_direct(4, percent=80)
+        mock_local.start_plan_direct.assert_called_once_with(4, 80)
 
     async def test_read_plan_delegates(self, mock_local):
         async with YarboClient(broker="192.168.1.24", sn="TEST") as c:
