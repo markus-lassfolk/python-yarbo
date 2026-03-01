@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2026.3.11] — 2026-03-01
+
+### Added
+
+- **56 typed command methods** — full coverage of all Yarbo MQTT commands
+  - Camera: `check_camera_status`, `camera_calibration`
+  - Firmware: `firmware_update_now`, `firmware_update_tonight`, `firmware_update_later`
+  - Diagnostics: `get_battery_cell_temps`, `get_motor_temps`, `get_body_current`, `get_head_current`, `get_odometer`, `get_speed`, `get_product_code`
+  - WiFi: `get_connected_wifi`, `get_wifi_list`, `get_saved_wifi_list`, `start_hotspot`
+  - Plans: `read_plan`, `read_all_plans`, `read_schedules`, `read_no_charge_period`, `read_recharge_point`, `save_charging_point`
+  - Settings: `set_auto_update`, `set_camera`, `set_camera_ota`, `set_child_lock`, `set_draw_mode`, `set_edge_blowing`, `set_elec_fence`, `set_follow_mode`, `set_geo_fence`, `set_heating_film`, `set_module_lock`, `set_motor_protect`, `set_ngz_edge`, `set_smart_blowing`, `set_smart_vision`, `set_trimmer`, `set_usb`, `set_video_record`
+  - Maps: `save_current_map`, `save_map_backup`, `get_all_map_backup`, `map_recovery`, `erase_map`
+  - Bag record: `bag_record` (with destructive confirm safeguard)
+- **Head-type validation** — `_validate_head_type()` checks attached head before blade/snow/roller commands; raises `ValueError` on mismatch
+- **Destructive operation safeguards** — `delete_plan`, `delete_all_plans`, `erase_map`, `bag_record` require `confirm=True`
+- **Default error reporting** (beta) — built-in GlitchTip DSN, opt-out via `YARBO_SENTRY_DSN=""`
+- **MQTT debug and capture** — CLI supports `--debug`, `--debug-raw`, `--mqtt-log-path`, `--mqtt-capture-max`
+- **`_maybe_report_mqtt`** — CLI helper to send captured MQTT dumps to GlitchTip
+
+### Fixed
+
+- **TLS security** — `tls_set_context(ssl.create_default_context())` used when no CA file specified; `CERT_NONE` never used as default
+- **Event loop safety** — `call_soon_threadsafe` guarded against closed event loops in MQTT callbacks
+- **Wildcard MQTT subscription** — discovery mode works without serial number
+- **Breadcrumb scrubbing** — passwords, tokens, API keys redacted in Sentry breadcrumbs
+- **`publish_command` delegation** — now correctly delegates to `publish_command` (not `publish_raw`)
+- **Duplicate `_DEFAULT_DSN`** removed; opt-out documentation corrected
+
+### Changed
+
+- **Roller speed payload** harmonised to `{speed: N}` format
+- **`set_chute_steering_work`** parameter renamed to `state` (from `angle`)
+- **`set_sound_param`** differentiated from `set_sound` with variant documentation
+
+---
+
 ## [2026.3.10] — 2026-03-01
 
 First public release. Local MQTT control only — cloud integration is experimental and not fully tested.
