@@ -186,7 +186,11 @@ class MqttTransport:
         self._client.on_message = self._on_message
 
         try:
-            self._client.connect(self._broker, self._port, keepalive=MQTT_KEEPALIVE)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(
+                None,
+                lambda: self._client.connect(self._broker, self._port, keepalive=MQTT_KEEPALIVE),
+            )
         except OSError as exc:
             raise YarboConnectionError(
                 f"Cannot connect to MQTT broker {self._broker}:{self._port}: {exc}"
