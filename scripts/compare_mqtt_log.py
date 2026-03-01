@@ -18,7 +18,7 @@ import json
 import sys
 
 # Use the same flatten and structured-key set as the status table
-from yarbo.models import flatten_mqtt_payload, STRUCTURED_MQTT_KEYS
+from yarbo.models import STRUCTURED_MQTT_KEYS, flatten_mqtt_payload
 
 
 def main() -> int:
@@ -72,17 +72,13 @@ def main() -> int:
         print(" ", k)
     print()
     print("Total keys:", len(device_msg_keys))
-    print(
-        "These keys match yarbo status 'All MQTT keys'; nothing is dropped."
-    )
+    print("These keys match yarbo status 'All MQTT keys'; nothing is dropped.")
 
     # Keys that appear in MQTT but are NOT in the structured status table
     missing_from_structured = sorted(device_msg_keys - STRUCTURED_MQTT_KEYS)
     print()
     print("--- Missing from structured status table ---")
-    print(
-        "The following MQTT keys are in the payload but have no dedicated row"
-    )
+    print("The following MQTT keys are in the payload but have no dedicated row")
     print("in the status table (they only appear in the 'All MQTT keys' dump):")
     if missing_from_structured:
         for k in missing_from_structured:

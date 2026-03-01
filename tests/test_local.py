@@ -13,6 +13,7 @@ import pytest
 from yarbo.exceptions import YarboNotControllerError, YarboTimeoutError
 from yarbo.local import YarboLocalClient
 from yarbo.models import (
+    HeadType,
     TelemetryEnvelope,
     YarboLightState,
     YarboPlan,
@@ -455,7 +456,7 @@ class TestYarboLocalClientPlanCRUD:
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
-        result = await client.delete_plan("plan-id-1")
+        result = await client.delete_plan("plan-id-1", confirm=True)
         assert result.success is True
         published = mock_transport.publish.call_args_list
         payload = next(c[0][1] for c in published if c[0][0] == "del_plan")
@@ -685,3 +686,196 @@ class TestYarboLocalClientCreatePlan:
         client._controller_acquired = True
         with pytest.raises(YarboTimeoutError):
             await client.create_plan(name="X", area_ids=[1])
+
+
+@pytest.mark.asyncio
+class TestNewCommands:
+    """Tests for newly added commands (#60)."""
+
+    async def test_check_camera_status(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "check_camera_status", "state": 0, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.check_camera_status()
+        assert result.success is True
+        mock_transport.publish.assert_any_call("check_camera_status", {})
+
+    async def test_camera_calibration(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "camera_calibration", "state": 0, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.camera_calibration()
+        assert result.success is True
+
+    async def test_firmware_update_now_requires_confirm(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        with pytest.raises(ValueError, match="confirm=True"):
+            await client.firmware_update_now()
+
+    async def test_firmware_update_now_with_confirm(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "firmware_update_now", "state": 0, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.firmware_update_now(confirm=True)
+        assert result.success is True
+        mock_transport.publish.assert_any_call("firmware_update_now", {})
+
+    async def test_firmware_update_tonight(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "firmware_update_tonight", "state": 0, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.firmware_update_tonight()
+        assert result.success is True
+
+    async def test_firmware_update_later(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={"topic": "firmware_update_later", "state": 0, "data": {}}
+        )
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.firmware_update_later()
+        assert result.success is True
+
+    async def test_get_saved_wifi_list(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={
+                "topic": "get_saved_wifi_list",
+                "state": 0,
+                "data": {"wifiList": ["HomeNet"]},
+            }
+        )
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.get_saved_wifi_list()
+        assert "wifiList" in result
+
+    async def test_get_saved_wifi_list_timeout(self, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(return_value=None)
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        result = await client.get_saved_wifi_list()
+        assert result == {}
+
+    async def test_bag_record_enabled(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        await client.bag_record(enabled=True)
+        mock_transport.publish.assert_any_call("bag_record", {"state": 1})
+
+    async def test_bag_record_disabled(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        client._controller_acquired = True
+        await client.bag_record(enabled=False)
+        mock_transport.publish.assert_any_call("bag_record", {"state": 0})
+
+
+@pytest.mark.asyncio
+class TestHeadValidation:
+    """Tests for _validate_head_type and head-specific commands (#62)."""
+
+    def _make_telemetry_with_head(self, head_type: int) -> YarboTelemetry:
+        return YarboTelemetry(head_type=head_type)
+
+    async def test_validate_no_status_warns_and_allows(self, mock_transport, caplog):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        # No _last_status set
+        with caplog.at_level("WARNING", logger="yarbo.local"):
+            client._validate_head_type(HeadType.LeafBlower)
+        assert "unknown" in caplog.text.lower()
+
+    async def test_validate_correct_head_passes(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._last_status = YarboTelemetry(head_type=HeadType.LeafBlower)
+        # Should not raise
+        client._validate_head_type(HeadType.LeafBlower)
+
+    async def test_validate_wrong_head_raises(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._last_status = YarboTelemetry(head_type=HeadType.SnowBlower)
+        with pytest.raises(ValueError, match="LeafBlower"):
+            client._validate_head_type(HeadType.LeafBlower)
+
+    async def test_validate_multiple_types_passes(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._last_status = YarboTelemetry(head_type=HeadType.LawnMowerPro)
+        # Should not raise — LawnMowerPro is acceptable
+        client._validate_head_type((HeadType.LawnMower, HeadType.LawnMowerPro))
+
+    async def test_set_roller_speed_wrong_head_raises(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._last_status = YarboTelemetry(head_type=HeadType.SnowBlower)
+        with pytest.raises(ValueError, match="LeafBlower"):
+            await client.set_roller_speed(speed=1000)
+
+    async def test_set_roller_speed_correct_head(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._controller_acquired = True
+        client._last_status = YarboTelemetry(head_type=HeadType.LeafBlower)
+        await client.set_roller_speed(speed=1000)
+        mock_transport.publish.assert_any_call("set_roller_speed", {"speed": 1000})
+
+    async def test_set_blade_height_wrong_head_raises(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._last_status = YarboTelemetry(head_type=HeadType.LeafBlower)
+        with pytest.raises(ValueError, match="LawnMower"):
+            await client.set_blade_height(height=3)
+
+    async def test_set_blade_speed_wrong_head_raises(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._last_status = YarboTelemetry(head_type=HeadType.LeafBlower)
+        with pytest.raises(ValueError, match="LawnMower"):
+            await client.set_blade_speed(speed=80)
+
+    async def test_push_snow_dir_wrong_head_raises(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._last_status = YarboTelemetry(head_type=HeadType.LeafBlower)
+        with pytest.raises(ValueError, match="SnowBlower"):
+            await client.push_snow_dir(direction=1)
+
+    async def test_set_chute_steering_work_wrong_head_raises(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._last_status = YarboTelemetry(head_type=HeadType.LawnMower)
+        with pytest.raises(ValueError, match="SnowBlower"):
+            await client.set_chute_steering_work(state=1)
+
+    async def test_push_snow_dir_correct_head(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        client._controller_acquired = True
+        client._last_status = YarboTelemetry(head_type=HeadType.SnowBlower)
+        await client.push_snow_dir(direction=2)
+        mock_transport.publish.assert_any_call("push_snow_dir", {"dir": 2})
+
+    async def test_last_status_updated_by_get_status(self, mock_transport):
+        """get_status() should update _last_status."""
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={
+                "topic": "snowbot/TEST123/device/DeviceMSG",
+                "payload": {
+                    "BatteryMSG": {"capacity": 75},
+                    "HeadMSG": {"head_type": HeadType.LawnMower},
+                },
+            }
+        )
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        await client.get_status()
+        assert client._last_status is not None

@@ -9,6 +9,7 @@ Example:
   uv run python scripts/run_live_mqtt_compare.py
   uv run python scripts/run_live_mqtt_compare.py --broker 192.168.1.10 --sn 24400102L8HO5227
 """
+
 from __future__ import annotations
 
 import argparse

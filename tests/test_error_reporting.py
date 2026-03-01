@@ -6,8 +6,8 @@ import sys
 from unittest.mock import MagicMock
 
 from yarbo.error_reporting import (
-    _scrub_event,
     _scrub_dict,
+    _scrub_event,
     _scrub_mqtt_envelope,
     init_error_reporting,
     report_mqtt_dump_to_glitchtip,
@@ -112,7 +112,11 @@ class TestScrubMqttEnvelope:
         assert _scrub_dict(d) == {"a": {"password": "[REDACTED]"}, "b": 1}
 
     def test_scrub_mqtt_envelope_scrubs_payload(self):
-        env = {"direction": "received", "topic": "snowbot/SN/device/DeviceMSG", "payload": {"password": "x", "battery": 80}}
+        env = {
+            "direction": "received",
+            "topic": "snowbot/SN/device/DeviceMSG",
+            "payload": {"password": "x", "battery": 80},
+        }
         out = _scrub_mqtt_envelope(env)
         assert out["payload"]["password"] == "[REDACTED]"
         assert out["payload"]["battery"] == 80
@@ -128,7 +132,11 @@ class TestReportMqttDumpToGlitchtip:
         """When Sentry is initialized, report_mqtt_dump_to_glitchtip sends dump via capture_message."""
         messages = [
             {"direction": "sent", "topic": "snowbot/SN/app/get_controller", "payload": {}},
-            {"direction": "received", "topic": "snowbot/SN/device/DeviceMSG", "payload": {"battery": 80}},
+            {
+                "direction": "received",
+                "topic": "snowbot/SN/device/DeviceMSG",
+                "payload": {"battery": 80},
+            },
         ]
         mock_sentry = MagicMock()
         mock_sentry.is_initialized.return_value = True
@@ -157,7 +165,11 @@ class TestReportMqttDumpToGlitchtip:
     def test_scrubs_sensitive_payload_before_send(self):
         """Payload keys like password are redacted in the dump sent to GlitchTip."""
         messages = [
-            {"direction": "received", "topic": "t", "payload": {"password": "secret", "battery": 50}},
+            {
+                "direction": "received",
+                "topic": "t",
+                "payload": {"password": "secret", "battery": 50},
+            },
         ]
         mock_sentry = MagicMock()
         mock_sentry.is_initialized.return_value = True
