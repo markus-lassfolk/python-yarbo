@@ -755,6 +755,21 @@ class YarboLocalClient:
     # Raw publish (escape hatch)
     # ------------------------------------------------------------------
 
+    async def publish_command(self, cmd: str, payload: dict[str, Any]) -> None:
+        """
+        Publish a command to the robot without auto-acquiring the controller.
+
+        Used by the coordinator which manages controller acquisition separately
+        (calls ``get_controller()`` explicitly before command sequences).
+
+        Topic: ``snowbot/{SN}/app/{cmd}``, payload: zlib-compressed JSON.
+
+        Args:
+            cmd:     Topic leaf (e.g. ``"start_plan"``).
+            payload: Dict payload (will be zlib-encoded).
+        """
+        await self._transport.publish(cmd, payload)
+
     async def publish_raw(self, cmd: str, payload: dict[str, Any]) -> None:
         """
         Publish an arbitrary command to the robot.
