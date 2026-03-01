@@ -476,15 +476,15 @@ class TestBladeConfiguration:
 class TestSnowBlowerAccessories:
     async def test_push_snow_dir(self, client, mock_transport):
         await client.push_snow_dir(1)
-        mock_transport.publish.assert_called_once_with("push_snow_dir", {"direction": 1})
+        mock_transport.publish.assert_called_once_with("push_snow_dir", {"dir": 1})
 
     async def test_set_chute_steering_work(self, client, mock_transport):
         await client.set_chute_steering_work(45)
-        mock_transport.publish.assert_called_once_with("cmd_chute_streeing_work", {"angle": 45})
+        mock_transport.publish.assert_called_once_with("set_chute_steering_work", {"state": 45})
 
     async def test_set_roller_speed(self, client, mock_transport):
         await client.set_roller_speed(1500)
-        mock_transport.publish.assert_called_once_with("cmd_roller", {"speed": 1500})
+        mock_transport.publish.assert_called_once_with("set_roller_speed", {"speed": 1500})
 
 
 @pytest.mark.asyncio

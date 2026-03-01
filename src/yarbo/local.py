@@ -47,7 +47,14 @@ from .const import (
     TOPIC_LEAF_PLAN_FEEDBACK,
 )
 from .exceptions import YarboNotControllerError, YarboTimeoutError
-from .models import YarboCommandResult, YarboLightState, YarboPlan, YarboSchedule, YarboTelemetry
+from .models import (
+    HeadType,
+    YarboCommandResult,
+    YarboLightState,
+    YarboPlan,
+    YarboSchedule,
+    YarboTelemetry,
+)
 from .mqtt import MqttTransport
 
 if TYPE_CHECKING:
@@ -104,6 +111,7 @@ class YarboLocalClient:
         self._auto_controller = auto_controller
         self._transport = MqttTransport(broker=broker, sn=sn, port=port)
         self._controller_acquired = False
+        self._last_status: YarboTelemetry | None = None
         self._mqtt_log_path = mqtt_log_path
         self._debug = debug
         self._debug_raw = debug_raw
@@ -346,8 +354,47 @@ class YarboLocalClient:
         if envelope:
             topic = envelope.get("topic", "")
             payload = envelope.get("payload", {})
-            return YarboTelemetry.from_dict(payload, topic=topic)
+            result = YarboTelemetry.from_dict(payload, topic=topic)
+            self._last_status = result
+            return result
         return None
+
+    def _validate_head_type(self, required: HeadType | tuple[HeadType, ...]) -> None:
+        """Validate that the attached head matches the required type(s).
+
+        Args:
+            required: A single :class:`~yarbo.models.HeadType` or a tuple of
+                      acceptable head types.
+
+        Raises:
+            ValueError: If a head status has been received and the attached head
+                        does not match *required*.
+
+        If no status has been received yet, a warning is logged and the command
+        is allowed through.
+        """
+        if isinstance(required, HeadType):
+            required = (required,)
+
+        if self._last_status is None or self._last_status.head_type is None:
+            logger.warning(
+                "Head type unknown (no status received yet) — allowing command; expected one of %s",
+                [h.name for h in required],
+            )
+            return
+
+        try:
+            current = HeadType(self._last_status.head_type)
+        except ValueError:
+            logger.warning(
+                "Unknown head_type value %r — allowing command",
+                self._last_status.head_type,
+            )
+            return
+
+        if current not in required:
+            req_names = " or ".join(h.name for h in required)
+            raise ValueError(f"Command requires {req_names} head, but {current.name} is attached")
 
     async def watch_telemetry(self) -> AsyncIterator[YarboTelemetry]:
         """
@@ -580,18 +627,24 @@ class YarboLocalClient:
         plans_raw: list[Any] = data.get("planList", data.get("plans", []))
         return [YarboPlan.from_dict(p) for p in plans_raw]
 
-    async def delete_plan(self, plan_id: str) -> YarboCommandResult:
+    async def delete_plan(self, plan_id: str, *, confirm: bool = False) -> YarboCommandResult:
         """Delete a plan by its ID.
 
         Args:
             plan_id: UUID of the plan to delete.
+            confirm: Must be ``True`` to confirm this destructive operation.
 
         Returns:
             :class:`~yarbo.models.YarboCommandResult` on success.
 
         Raises:
+            ValueError:        If *confirm* is not ``True``.
             YarboTimeoutError: If no acknowledgement is received.
         """
+        if not confirm:
+            raise ValueError(
+                "delete_plan is a destructive operation. Pass confirm=True to confirm."
+            )
         await self._ensure_controller()
         return await self._publish_and_wait("del_plan", {"planId": plan_id})
 
@@ -628,7 +681,7 @@ class YarboLocalClient:
             speed: Roller speed in RPM (0-2000).
         """
         await self._ensure_controller()
-        await self._transport.publish("cmd_roller", {"speed": speed})
+        await self._transport.publish("cmd_roller", {"vel": speed})
 
     async def stop_manual_drive(
         self, hard: bool = False, emergency: bool = False
@@ -1309,6 +1362,7 @@ class YarboLocalClient:
         Args:
             height: Blade height value (robot-defined units).
         """
+        self._validate_head_type((HeadType.LawnMower, HeadType.LawnMowerPro))
         await self._ensure_controller()
         await self._transport.publish("set_blade_height", {"height": height})
 
@@ -1318,6 +1372,7 @@ class YarboLocalClient:
         Args:
             speed: Blade speed value (robot-defined units).
         """
+        self._validate_head_type((HeadType.LawnMower, HeadType.LawnMowerPro))
         await self._ensure_controller()
         await self._transport.publish("set_blade_speed", {"speed": speed})
 
@@ -1350,17 +1405,19 @@ class YarboLocalClient:
         Args:
             direction: Direction integer (robot-defined).
         """
+        self._validate_head_type(HeadType.SnowBlower)
         await self._ensure_controller()
-        await self._transport.publish("push_snow_dir", {"direction": direction})
+        await self._transport.publish("push_snow_dir", {"dir": direction})
 
-    async def set_chute_steering_work(self, angle: int) -> None:
-        """Set the chute steering angle during work.
+    async def set_chute_steering_work(self, state: int) -> None:
+        """Set the chute steering state during work.
 
         Args:
-            angle: Steering angle in degrees.
+            state: Chute steering state (robot-defined).
         """
+        self._validate_head_type(HeadType.SnowBlower)
         await self._ensure_controller()
-        await self._transport.publish("cmd_chute_streeing_work", {"angle": angle})
+        await self._transport.publish("set_chute_steering_work", {"state": state})
 
     async def set_roller_speed(self, speed: int) -> None:
         """Set the roller/blower speed.
@@ -1368,8 +1425,9 @@ class YarboLocalClient:
         Args:
             speed: Speed value (robot-defined units).
         """
+        self._validate_head_type(HeadType.LeafBlower)
         await self._ensure_controller()
-        await self._transport.publish("cmd_roller", {"speed": speed})
+        await self._transport.publish("set_roller_speed", {"speed": speed})
 
     # ------------------------------------------------------------------
     # Motor & mechanical
