@@ -615,7 +615,7 @@ class YarboLocalClient:
             speed: Roller speed in RPM (0-2000).
         """
         await self._ensure_controller()
-        await self._transport.publish("cmd_roller", {"vel": speed})
+        await self._transport.publish("cmd_roller", {"speed": speed})
 
     async def stop_manual_drive(
         self, hard: bool = False, emergency: bool = False
@@ -826,7 +826,7 @@ class YarboLocalClient:
 
     async def set_sound(self, volume: int, song_id: int = 0) -> None:
         """
-        Set the speaker volume.
+        Set the speaker volume (sound parameter variant A).
 
         Args:
             volume:  Volume level (0-100).
@@ -834,6 +834,21 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         await self._transport.publish("set_sound_param", {"vol": volume, "songId": song_id})
+
+    async def set_sound_param(self, volume: int, enabled: int) -> None:
+        """
+        Set the speaker volume and enable/disable audio output (variant B).
+
+        Uses the same ``set_sound_param`` command but with a different payload
+        shape than :meth:`set_sound`.  Both variants are known to exist in
+        firmware captures.
+
+        Args:
+            volume:  Volume level (0-100).
+            enabled: 1 to enable audio output, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_sound_param", {"volume": volume, "enable": enabled})
 
     async def play_song(self, song_id: int) -> None:
         """
@@ -1321,7 +1336,7 @@ class YarboLocalClient:
             speed: Speed value (robot-defined units).
         """
         await self._ensure_controller()
-        await self._transport.publish("cmd_roller", {"vel": speed})
+        await self._transport.publish("cmd_roller", {"speed": speed})
 
     # ------------------------------------------------------------------
     # Motor & mechanical

@@ -13,6 +13,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Default DSN (override with YARBO_SENTRY_DSN or SENTRY_DSN).
+_DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@glitchtip.lassfolk.cc/2"
+
 # Sensitive-key scrubbing helpers — compiled once at import time.
 _SCRUB_KEY_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential", "key")
 _SCRUB_MSG_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential")
@@ -31,9 +34,9 @@ def init_error_reporting(
 
     Args:
         dsn: Sentry DSN. If omitted, falls back to the ``YARBO_SENTRY_DSN`` or
-             ``SENTRY_DSN`` environment variables.  No compiled-in default is
-             provided; set the env var explicitly.  Pass ``enabled=False`` or
-             set ``YARBO_SENTRY_DSN=""`` to fully disable reporting.
+             ``SENTRY_DSN`` environment variables, then the compiled-in default.
+             Pass ``enabled=False`` or set ``YARBO_SENTRY_DSN=""`` to fully
+             disable reporting.
         environment: Environment tag (production/development/testing).
         enabled: Master switch. If False, no SDK initialization occurs.
     """
@@ -47,7 +50,7 @@ def init_error_reporting(
     if env_dsn is not None and env_dsn == "":
         return  # Explicitly disabled
 
-    dsn = dsn or env_dsn or os.environ.get("SENTRY_DSN")
+    dsn = dsn or env_dsn or os.environ.get("SENTRY_DSN") or _DEFAULT_DSN
 
     if not dsn:
         return
@@ -79,14 +82,9 @@ def _scrub_event(event: dict, hint: dict) -> dict:  # type: ignore[type-arg]
     if "breadcrumbs" in event and "values" in event["breadcrumbs"]:
         for breadcrumb in event["breadcrumbs"]["values"]:
             if "message" in breadcrumb:
-                msg = str(breadcrumb["message"])
-                sensitive = any(s in msg.lower() for s in _SCRUB_MSG_KEYWORDS)
-                if sensitive or _SCRUB_KEY_PATTERN.search(msg):
-                    breadcrumb["message"] = "[REDACTED]"
+                breadcrumb["message"] = _scrub_string(str(breadcrumb["message"]))
             if "data" in breadcrumb and isinstance(breadcrumb["data"], dict):
-                for key in list(breadcrumb["data"]):
-                    if any(s in key.lower() for s in _SCRUB_KEY_KEYWORDS):
-                        breadcrumb["data"][key] = "[REDACTED]"
+                breadcrumb["data"] = _scrub_breadcrumb_data(breadcrumb["data"])
 
     return event
 
@@ -156,3 +154,28 @@ def _scrub_dict(d: dict[str, Any]) -> dict[str, Any]:
         else:
             result[k] = v
     return result
+
+
+def _scrub_string(value: str) -> str:
+    """Return a redacted string if it appears to contain sensitive data."""
+    lowered = value.lower()
+    if any(s in lowered for s in _SCRUB_MSG_KEYWORDS) or _SCRUB_KEY_PATTERN.search(value):
+        return "[REDACTED]"
+    return value
+
+
+def _scrub_breadcrumb_data(value: Any) -> Any:
+    """Scrub breadcrumb data values as well as sensitive keys."""
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for k, v in value.items():
+            if any(s in k.lower() for s in _SCRUB_KEY_KEYWORDS):
+                cleaned[k] = "[REDACTED]"
+            else:
+                cleaned[k] = _scrub_breadcrumb_data(v)
+        return cleaned
+    if isinstance(value, list):
+        return [_scrub_breadcrumb_data(v) for v in value]
+    if isinstance(value, str):
+        return _scrub_string(value)
+    return value
