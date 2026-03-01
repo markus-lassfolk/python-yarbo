@@ -558,23 +558,16 @@ class TestMqttTlsSecurity:
         mock_ctx = MagicMock()
         with patch("ssl.create_default_context", return_value=mock_ctx) as mock_create:
             transport = MqttTransport(broker="broker.example.com", sn="SN1", tls=True)
-            connect_task = asyncio.create_task(transport.connect())
-            await asyncio.sleep(0)  # let connect() run up to wait_for(_connected)
+            # Call _create_and_connect_paho directly (avoids executor thread mock issues)
+            transport._create_and_connect_paho()
 
-            # tls_set must have been called before loop_start/wait_for
-            mock_paho.tls_set.assert_called_once()
-            call_kwargs = mock_paho.tls_set.call_args[1]
-            assert call_kwargs.get("ssl_context") is mock_ctx, (
-                "Expected ssl_context=create_default_context() when tls_ca_certs is None"
-            )
-            # CERT_NONE must never appear
-            assert call_kwargs.get("cert_reqs") != ssl.CERT_NONE
+            # tls_set_context must have been called with the default context
+            mock_paho.tls_set_context.assert_called_once_with(mock_ctx)
+            # tls_set must NOT have been called (no CA = context path)
+            mock_paho.tls_set.assert_not_called()
             mock_create.assert_called_once_with()
 
         # Clean up the pending connect task
-        mock_paho._fire_connect(0)
-        await asyncio.sleep(0)
-        await connect_task
 
     async def test_tls_with_ca_certs_uses_cert_required(self, mock_paho):
         """When tls=True and tls_ca_certs is set, CERT_REQUIRED and ca_certs are used."""
@@ -582,8 +575,8 @@ class TestMqttTlsSecurity:
         transport = MqttTransport(
             broker="broker.example.com", sn="SN1", tls=True, tls_ca_certs="/path/to/ca.pem"
         )
-        connect_task = asyncio.create_task(transport.connect())
-        await asyncio.sleep(0)
+        # Call _create_and_connect_paho directly (avoids executor thread mock issues)
+        transport._create_and_connect_paho()
 
         mock_paho.tls_set.assert_called_once()
         call_kwargs = mock_paho.tls_set.call_args[1]
@@ -592,25 +585,22 @@ class TestMqttTlsSecurity:
         # ssl_context path must NOT be taken when a CA file is given
         assert "ssl_context" not in call_kwargs
 
-        mock_paho._fire_connect(0)
-        await asyncio.sleep(0)
-        await connect_task
-
     async def test_cert_none_never_used_as_default(self, mock_paho):
         """ssl.CERT_NONE must never appear in the tls_set call for the default config."""
 
         with patch("ssl.create_default_context", return_value=MagicMock()):
             transport = MqttTransport(broker="broker.example.com", sn="SN1", tls=True)
-            connect_task = asyncio.create_task(transport.connect())
-            await asyncio.sleep(0)
+            # Call _create_and_connect_paho directly (avoids executor thread mock issues)
+            transport._create_and_connect_paho()
 
-        for call in mock_paho.tls_set.call_args_list:
+        # Check both tls_set and tls_set_context calls
+        all_calls = list(mock_paho.tls_set.call_args_list) + list(
+            mock_paho.tls_set_context.call_args_list
+        )
+        for call in all_calls:
             args, kwargs = call
             assert ssl.CERT_NONE not in args, "CERT_NONE must not appear in positional args"
             assert kwargs.get("cert_reqs") != ssl.CERT_NONE, (
                 "CERT_NONE must not be passed as cert_reqs"
             )
 
-        mock_paho._fire_connect(0)
-        await asyncio.sleep(0)
-        await connect_task

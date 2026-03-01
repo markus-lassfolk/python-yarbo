@@ -205,7 +205,7 @@ class YarboClient:
         await self._local.publish_raw(cmd, payload)
 
     async def publish_command(self, cmd: str, payload: dict[str, Any]) -> None:
-        """Alias for :meth:`publish_raw` — publish an arbitrary MQTT command to the robot."""
+        """Publish an arbitrary MQTT command to the robot (alias for publish_raw)."""
         await self._local.publish_command(cmd, payload)
 
     # -- Robot control --
@@ -636,9 +636,9 @@ class YarboClient:
         """Set snow push direction (snow blower head only)."""
         return await self._local.push_snow_dir(direction=direction)
 
-    async def set_chute_steering_work(self, state: int) -> None:
-        """Enable or disable chute auto-steering (snow blower head only)."""
-        return await self._local.set_chute_steering_work(angle=state)
+    async def set_chute_steering_work(self, angle: int) -> None:
+        """Set the chute steering angle during work (snow blower head only)."""
+        return await self._local.set_chute_steering_work(state=angle)
 
     # ------------------------------------------------------------------
     # Camera commands (delegated to YarboLocalClient)

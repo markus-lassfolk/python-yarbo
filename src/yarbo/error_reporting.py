@@ -8,25 +8,30 @@ Sensitive payload keys are scrubbed before send.
 
 import json
 import logging
-import os
 import re
 from typing import Any
 
-_LOGGER = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+
+# Default DSN (override with YARBO_SENTRY_DSN or SENTRY_DSN).
+_DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@glitchtip.lassfolk.cc/2"
+
+# Sensitive-key scrubbing helpers — compiled once at import time.
+_SCRUB_KEY_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential", "key")
+_SCRUB_MSG_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential")
+_SCRUB_KEY_PATTERN = re.compile(r"(?:_|api|access|auth|private)key", re.IGNORECASE)
 
 # Default DSN for the python-yarbo GlitchTip project.
 # Enabled by default during beta to help find issues.
 # Opt-out: set YARBO_SENTRY_DSN="" or pass enabled=False.
-_DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@glitchtip.lassfolk.cc/2"
 
 
 def init_error_reporting(
     dsn: str | None = None,
     environment: str = "production",
     enabled: bool = True,
-    tags: dict[str, str] | None = None,
 ) -> None:
-    """Initialize Sentry/GlitchTip error reporting for python-yarbo.
+    """Initialize Sentry/GlitchTip error reporting.
 
     Enabled by default during beta with a built-in DSN. No PII is collected;
     credentials and sensitive keys are scrubbed before sending.
@@ -38,86 +43,52 @@ def init_error_reporting(
              ``SENTRY_DSN`` environment variables, then the built-in default.
         environment: Environment tag (production/development/testing).
         enabled: Master switch. If False, no SDK initialization occurs.
-        tags: Optional extra tags (e.g. robot_serial, library_version).
     """
     if not enabled:
         return
 
-    # Resolve DSN: explicit arg > YARBO_SENTRY_DSN env var > SENTRY_DSN env var > built-in default
+    import os  # noqa: PLC0415
+
+    # Check for explicit disable via empty env var
     env_dsn = os.environ.get("YARBO_SENTRY_DSN")
     if env_dsn is not None and env_dsn == "":
-        _LOGGER.debug('Error reporting explicitly disabled via YARBO_SENTRY_DSN=""')
-        return
-    effective_dsn = dsn or env_dsn or os.environ.get("SENTRY_DSN") or _DEFAULT_DSN
+        return  # Explicitly disabled
 
-    if not effective_dsn:
+    dsn = dsn or env_dsn or os.environ.get("SENTRY_DSN") or _DEFAULT_DSN
+
+    if not dsn:
         return
 
     try:
         import sentry_sdk  # noqa: PLC0415
 
         sentry_sdk.init(
-            dsn=effective_dsn,
+            dsn=dsn,
             environment=environment,
             traces_sample_rate=0.1,
             send_default_pii=False,
-            before_send=_scrub_event,
+            before_send=_scrub_event,  # type: ignore[arg-type, unused-ignore]
         )
-
-        if tags:
-            for key, value in tags.items():
-                sentry_sdk.set_tag(key, value)
-
-        _LOGGER.debug("Error reporting initialized (dsn=%s...)", effective_dsn[:30])
+        logger.debug("Error reporting initialized (dsn=%s...)", dsn[:30])
     except ImportError:
-        _LOGGER.debug("sentry-sdk not installed; error reporting disabled")
+        logger.debug("sentry-sdk not installed; error reporting disabled")
     except Exception as exc:  # noqa: BLE001
-        _LOGGER.warning("Failed to initialize error reporting: %s", exc)
-
-
-# Non-sensitive field names that contain "_key" but must not be redacted.
-_KEY_ALLOWLIST: frozenset[str] = frozenset({"entity_key"})
-
-# Pattern to detect key-like strings in breadcrumb messages (e.g., "apikey", "access_key")
-_SCRUB_KEY_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential", "key")
-_SCRUB_MSG_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential")
-_SCRUB_KEY_PATTERN = re.compile(r"(?:_|api|access|auth|private)key", re.IGNORECASE)
-
-
-def _is_sensitive_key(key_lower: str) -> bool:
-    """Check if a key name looks sensitive and should be redacted."""
-    if any(s in key_lower for s in ("password", "token", "secret", "credential")):
-        return True
-    if key_lower in _KEY_ALLOWLIST:
-        return False
-    return (
-        key_lower == "key"
-        or "_key" in key_lower
-        or key_lower.startswith("key_")
-        or key_lower.endswith("key")
-    )
+        logger.warning("Failed to initialize error reporting: %s", exc)
 
 
 def _scrub_event(event: dict, hint: dict) -> dict:  # type: ignore[type-arg]
     """Remove sensitive data before sending."""
     if "extra" in event:
         for key in list(event["extra"]):
-            if _is_sensitive_key(key.lower()):
+            if any(s in key.lower() for s in _SCRUB_KEY_KEYWORDS):
                 event["extra"][key] = "[REDACTED]"
 
     if "breadcrumbs" in event and "values" in event["breadcrumbs"]:
         for breadcrumb in event["breadcrumbs"]["values"]:
             if "message" in breadcrumb:
-                msg = str(breadcrumb["message"])
-                msg_lower = msg.lower()
-                keywords = ("password", "token", "secret", "credential")
-                sensitive = any(s in msg_lower for s in keywords)
-                if sensitive or _SCRUB_KEY_PATTERN.search(msg):
-                    breadcrumb["message"] = "[REDACTED]"
+                breadcrumb["message"] = _scrub_string(str(breadcrumb["message"]))
             if "data" in breadcrumb and isinstance(breadcrumb["data"], dict):
-                for key in list(breadcrumb["data"]):
-                    if _is_sensitive_key(key.lower()):
-                        breadcrumb["data"][key] = "[REDACTED]"
+                breadcrumb["data"] = _scrub_breadcrumb_data(breadcrumb["data"])
 
     return event
 
@@ -143,11 +114,11 @@ def report_mqtt_dump_to_glitchtip(
     try:
         import sentry_sdk  # noqa: PLC0415
     except ImportError:
-        _LOGGER.debug("sentry-sdk not installed; MQTT dump not sent")
+        logger.debug("sentry-sdk not installed; MQTT dump not sent")
         return False
 
     if not sentry_sdk.is_initialized():
-        _LOGGER.debug("Error reporting not initialized; MQTT dump not sent")
+        logger.debug("Error reporting not initialized; MQTT dump not sent")
         return False
 
     trimmed = messages[-max_messages:] if len(messages) > max_messages else messages
@@ -161,7 +132,7 @@ def report_mqtt_dump_to_glitchtip(
         level="info",
         extras={"mqtt_dump": dump, "message_count": len(scrubbed)},
     )
-    _LOGGER.info("MQTT dump sent to GlitchTip (%d messages)", len(scrubbed))
+    logger.info("MQTT dump sent to GlitchTip (%d messages)", len(scrubbed))
     return True
 
 
@@ -176,7 +147,7 @@ def _scrub_mqtt_envelope(envelope: dict[str, Any]) -> dict[str, Any]:
 
 def _scrub_dict(d: dict[str, Any]) -> dict[str, Any]:
     """Recursively redact values for keys that look sensitive."""
-    result = {}
+    result: dict[str, Any] = {}
     for k, v in d.items():
         if any(s in k.lower() for s in _SCRUB_KEY_KEYWORDS):
             result[k] = "[REDACTED]"
@@ -187,3 +158,28 @@ def _scrub_dict(d: dict[str, Any]) -> dict[str, Any]:
         else:
             result[k] = v
     return result
+
+
+def _scrub_string(value: str) -> str:
+    """Return a redacted string if it appears to contain sensitive data."""
+    lowered = value.lower()
+    if any(s in lowered for s in _SCRUB_MSG_KEYWORDS) or _SCRUB_KEY_PATTERN.search(value):
+        return "[REDACTED]"
+    return value
+
+
+def _scrub_breadcrumb_data(value: Any) -> Any:
+    """Scrub breadcrumb data values as well as sensitive keys."""
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for k, v in value.items():
+            if any(s in k.lower() for s in _SCRUB_KEY_KEYWORDS):
+                cleaned[k] = "[REDACTED]"
+            else:
+                cleaned[k] = _scrub_breadcrumb_data(v)
+        return cleaned
+    if isinstance(value, list):
+        return [_scrub_breadcrumb_data(v) for v in value]
+    if isinstance(value, str):
+        return _scrub_string(value)
+    return value
