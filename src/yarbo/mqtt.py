@@ -5,7 +5,7 @@ Wraps ``paho-mqtt`` in an asyncio-friendly interface. The Yarbo robot
 exposes a plaintext EMQX broker on port 1883; all payloads are
 zlib-compressed JSON (see ``yarbo._codec``).
 
-Protocol notes (from live captures and Blutter ASM analysis):
+Protocol notes (from hardware testing and community documentation):
 - Topics follow ``snowbot/{SN}/app/{cmd}`` (publish) and
   ``snowbot/{SN}/device/{feedback}`` (subscribe).
 - A ``get_controller`` handshake MUST be sent before action commands.
@@ -15,9 +15,7 @@ Protocol notes (from live captures and Blutter ASM analysis):
 - ``DeviceMSG`` is the primary telemetry topic (~1-2 Hz, zlib JSON).
 
 References:
-  yarbo-reversing/scripts/local_ctrl.py — working reference implementation
-  yarbo-reversing/docs/COMMAND_CATALOGUE.md — full command catalogue
-  yarbo-reversing/docs/MQTT_PROTOCOL.md — protocol reference
+  Protocol documentation (command catalogue and MQTT protocol reference)
 """
 
 from __future__ import annotations

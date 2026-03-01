@@ -54,7 +54,7 @@ Repository = "https://github.com/markus-lassfolk/python-yarbo"
 "Bug Tracker" = "https://github.com/markus-lassfolk/python-yarbo/issues"
 Documentation = "https://github.com/markus-lassfolk/python-yarbo#readme"
 Changelog = "https://github.com/markus-lassfolk/python-yarbo/blob/main/CHANGELOG.md"
-"yarbo-reversing" = "https://github.com/markus-lassfolk/yarbo-reversing"
+"Protocol Documentation" = "https://github.com/markus-lassfolk/python-yarbo/blob/main/docs/index.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/yarbo"]

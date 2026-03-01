@@ -5,9 +5,8 @@ Python library for local and cloud control of Yarbo robot mowers via MQTT.
 ## Navigation
 
 - [API Reference](api.md)
-- [Protocol Details](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/COMMAND_CATALOGUE.md)
-- [Light Control Protocol](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/LIGHT_CTRL_PROTOCOL.md)
-- [API Endpoints](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/API_ENDPOINTS.md)
+- [GitHub Repository](https://github.com/markus-lassfolk/python-yarbo)
+- [PSYarbo PowerShell module](https://github.com/markus-lassfolk/PSYarbo)
 - [CHANGELOG](../CHANGELOG.md)
 - [CONTRIBUTING](../CONTRIBUTING.md)
 

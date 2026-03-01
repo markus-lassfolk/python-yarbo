@@ -8,11 +8,10 @@ NOTE on API migration (as of 2026-02-25):
     The Yarbo backend is actively migrating from plain JWT Bearer tokens to
     AWS SigV4 (IAM/Cognito) auth. Many endpoints that previously accepted JWT
     now return 403. Endpoints marked ✅ work with Bearer auth.
-    See yarbo-reversing/yarbo/client.py for a full status inventory.
+    See the protocol documentation for a full endpoint status inventory.
 
 References:
-    yarbo-reversing/yarbo/client.py — synchronous reference implementation
-    yarbo-reversing/docs/API_ENDPOINTS.md — endpoint documentation
+    Protocol documentation (API endpoint reference)
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ class YarboCloudClient:
         username:     User email address.
         password:     Plaintext password.
         base_url:     Override the REST gateway base URL.
-        rsa_key_path: Path to the RSA public key PEM (extracted from APK).
+        rsa_key_path: Path to the RSA public key PEM (see keys/README.md).
     """
 
     def __init__(

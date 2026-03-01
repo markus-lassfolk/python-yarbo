@@ -45,7 +45,7 @@ Keep the following in mind:
 
 - **Credentials**: Never hard-code passwords, API keys, or serial numbers in code.
   Use environment variables or a secrets manager. The RSA public key extracted from
-  the APK is not sensitive and can be committed; private keys and passwords must not be.
+  the public RSA key is not sensitive and can be committed; private keys and passwords must not be.
 
 - **Network exposure**: The Yarbo EMQX broker listens on port 1883 (plaintext) on
   the local network. Do **not** expose this port to the internet. Restrict access
