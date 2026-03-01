@@ -638,7 +638,7 @@ class YarboClient:
 
     async def set_chute_steering_work(self, angle: int) -> None:
         """Set the chute steering angle during work (snow blower head only)."""
-        return await self._local.set_chute_steering_work(angle=angle)
+        return await self._local.set_chute_steering_work(state=angle)
 
     # ------------------------------------------------------------------
     # Camera commands (delegated to YarboLocalClient)

@@ -196,7 +196,7 @@ class MqttTransport:
                     cert_reqs=ssl.CERT_REQUIRED,
                 )
             else:
-                client.tls_set(ssl_context=ssl.create_default_context())
+                client.tls_set_context(ssl.create_default_context())
 
         # Blocking: DNS resolution + TCP connect (+ optional TLS handshake).
         client.connect(self._broker, self._port, keepalive=MQTT_KEEPALIVE)
