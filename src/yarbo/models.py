@@ -158,28 +158,33 @@ STRUCTURED_MQTT_KEYS: frozenset[str] = frozenset(
 
 
 class HeadType(enum.IntEnum):
-    """Attachment head type as reported in ``HeadMsg.head_type``."""
+    """Attachment head type as reported in ``HeadMsg.head_type``.
 
-    Snow = 0
+    Wire values decoded from APK ``_HEAD_TYPE_MAP``:
+    0=NoHead, 1=SnowBlower, 2=LeafBlower, 3=LawnMower,
+    4=SmartCover, 5=LawnMowerPro, 99=Trimmer.
+    """
+
+    NoHead = 0
+    """No head attached."""
+
+    SnowBlower = 1
     """Snow blower head."""
 
-    Mower = 1
-    """Standard mower head."""
-
-    MowerPro = 2
-    """Pro mower head."""
-
-    Leaf = 3
+    LeafBlower = 2
     """Leaf blower head."""
 
-    SAM = 4
-    """SAM head."""
+    LawnMower = 3
+    """Standard lawn mower head."""
 
-    Trimmer = 5
+    SmartCover = 4
+    """Smart cover / SAM head."""
+
+    LawnMowerPro = 5
+    """Pro lawn mower head."""
+
+    Trimmer = 99
     """Trimmer head."""
-
-    NoHead = 6
-    """No head attached."""
 
 
 # ---------------------------------------------------------------------------
@@ -629,6 +634,15 @@ class YarboTelemetry:
         ``serial_number`` is the more descriptive form preferred in new code.
         """
         return self.sn
+
+    @property
+    def head_serial(self) -> str | None:
+        """Alias for :attr:`head_serial_number` (attachment head serial number).
+
+        ``head_serial`` is a shorter form, populated from
+        ``HeadSerialMsg.head_sn`` or ``HeadMsg.sn``.
+        """
+        return self.head_serial_number
 
     @classmethod
     def from_dict(cls, d: dict[str, Any], topic: str | None = None) -> YarboTelemetry:  # noqa: PLR0915
