@@ -24,7 +24,6 @@ _SCRUB_KEY_PATTERN = re.compile(r"(?:_|api|access|auth|private)key", re.IGNORECA
 # Default DSN for the python-yarbo GlitchTip project.
 # Enabled by default during beta to help find issues.
 # Opt-out: set YARBO_SENTRY_DSN="" or pass enabled=False.
-_DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@glitchtip.lassfolk.cc/2"
 
 
 def init_error_reporting(
