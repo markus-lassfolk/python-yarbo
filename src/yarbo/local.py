@@ -1251,16 +1251,6 @@ class YarboLocalClient:
         await self._ensure_controller()
         await self._transport.publish(cmd, payload)
 
-
-    async def publish_command(self, cmd: str, payload: dict[str, Any]) -> None:
-        """Alias for :meth:`publish_raw` — publish an arbitrary command to the robot.
-
-        Args:
-            cmd:     Topic leaf (e.g. ``"set_blade_height"``).
-            payload: Dict payload (will be zlib-encoded).
-        """
-        await self.publish_raw(cmd, payload)
-
     # ------------------------------------------------------------------
     # Blade / mowing configuration
     # ------------------------------------------------------------------

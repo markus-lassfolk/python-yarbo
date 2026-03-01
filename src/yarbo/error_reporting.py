@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -47,7 +48,7 @@ def init_error_reporting(
         return
 
     try:
-        import sentry_sdk
+        import sentry_sdk  # noqa: PLC0415
 
         sentry_sdk.init(
             dsn=effective_dsn,
@@ -64,26 +65,50 @@ def init_error_reporting(
         _LOGGER.debug("Error reporting initialized (dsn=%s...)", effective_dsn[:30])
     except ImportError:
         _LOGGER.debug("sentry-sdk not installed; error reporting disabled")
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _LOGGER.warning("Failed to initialize error reporting: %s", exc)
 
 
 # Non-sensitive field names that contain "_key" but must not be redacted.
 _KEY_ALLOWLIST: frozenset[str] = frozenset({"entity_key"})
 
+# Pattern to detect key-like strings in breadcrumb messages (e.g., "apikey", "access_key")
+_SCRUB_KEY_PATTERN = re.compile(r"(?:_|api|access|auth|private)key", re.IGNORECASE)
+
+
+def _is_sensitive_key(key_lower: str) -> bool:
+    """Check if a key name looks sensitive and should be redacted."""
+    if any(s in key_lower for s in ("password", "token", "secret", "credential")):
+        return True
+    if key_lower in _KEY_ALLOWLIST:
+        return False
+    return (
+        key_lower == "key"
+        or "_key" in key_lower
+        or key_lower.startswith("key_")
+        or key_lower.endswith("key")
+    )
+
 
 def _scrub_event(event: dict, hint: dict) -> dict:  # type: ignore[type-arg]
     """Remove sensitive data before sending."""
     if "extra" in event:
         for key in list(event["extra"]):
-            key_lower = key.lower()
-            if any(s in key_lower for s in ("password", "token", "secret", "credential")):
+            if _is_sensitive_key(key.lower()):
                 event["extra"][key] = "[REDACTED]"
-            elif (
-                key_lower == "key"
-                or "_key" in key_lower
-                or key_lower.startswith("key_")
-                or key_lower.endswith("key")
-            ) and key_lower not in _KEY_ALLOWLIST:
-                event["extra"][key] = "[REDACTED]"
+
+    if "breadcrumbs" in event and "values" in event["breadcrumbs"]:
+        for breadcrumb in event["breadcrumbs"]["values"]:
+            if "message" in breadcrumb:
+                msg = str(breadcrumb["message"])
+                msg_lower = msg.lower()
+                keywords = ("password", "token", "secret", "credential")
+                sensitive = any(s in msg_lower for s in keywords)
+                if sensitive or _SCRUB_KEY_PATTERN.search(msg):
+                    breadcrumb["message"] = "[REDACTED]"
+            if "data" in breadcrumb and isinstance(breadcrumb["data"], dict):
+                for key in list(breadcrumb["data"]):
+                    if _is_sensitive_key(key.lower()):
+                        breadcrumb["data"][key] = "[REDACTED]"
+
     return event
