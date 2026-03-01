@@ -27,7 +27,7 @@ mowers and snow blowers — a community-developed project.
 ## Requirements
 
 - Python ≥ 3.11
-- Same WiFi network as the robot (for local control)
+- Same network as the robot (for local control). Relies on broadcast messages for auto-discovery. 
 - `paho-mqtt` ≥ 2.0 (included)
 - `aiohttp` ≥ 3.9 (included)
 
