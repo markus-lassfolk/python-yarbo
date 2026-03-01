@@ -45,7 +45,7 @@ See README.md for full documentation.
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "2026.3.10"
 __author__ = "Markus Lassfolk"
 __license__ = "MIT"
 
@@ -118,5 +118,5 @@ __all__ = [  # noqa: RUF022 — grouped by category, alphabetical within each
     "YarboTokenExpiredError",
 ]
 
-# Opt-out error reporting: enabled by default, disable via YARBO_SENTRY_DSN=""
+# Opt-in error reporting: enabled if YARBO_SENTRY_DSN or SENTRY_DSN env var is set.
 init_error_reporting()

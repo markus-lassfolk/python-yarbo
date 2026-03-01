@@ -33,7 +33,6 @@ References:
 from __future__ import annotations
 
 import asyncio
-import contextlib
 from datetime import UTC, datetime
 import logging
 import time
@@ -1213,10 +1212,9 @@ class YarboLocalClient:
                 command_name=cmd,
                 _queue=wait_queue,
             )
-            return msg if isinstance(msg, dict) else {}
+            return msg.get("data", {}) or {} if isinstance(msg, dict) else {}
         except Exception:
-            with contextlib.suppress(ValueError):
-                self._transport._message_queues.remove(wait_queue)
+            self._transport.release_queue(wait_queue)
             raise
 
     # ------------------------------------------------------------------
@@ -1243,6 +1241,8 @@ class YarboLocalClient:
         Publish an arbitrary command to the robot.
 
         Useful for commands not yet wrapped in a dedicated method.
+        Auto-acquires controller role if needed (use :meth:`publish_command`
+        to skip auto-acquire, e.g. in coordinator patterns).
 
         Args:
             cmd:     Topic leaf (e.g. ``"start_plan"``).
@@ -1250,16 +1250,6 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         await self._transport.publish(cmd, payload)
-
-
-    async def publish_command(self, cmd: str, payload: dict[str, Any]) -> None:
-        """Alias for :meth:`publish_raw` — publish an arbitrary command to the robot.
-
-        Args:
-            cmd:     Topic leaf (e.g. ``"set_blade_height"``).
-            payload: Dict payload (will be zlib-encoded).
-        """
-        await self.publish_raw(cmd, payload)
 
     # ------------------------------------------------------------------
     # Blade / mowing configuration
@@ -1331,7 +1321,7 @@ class YarboLocalClient:
             speed: Speed value (robot-defined units).
         """
         await self._ensure_controller()
-        await self._transport.publish("cmd_roller", {"speed": speed})
+        await self._transport.publish("cmd_roller", {"vel": speed})
 
     # ------------------------------------------------------------------
     # Motor & mechanical
@@ -1514,16 +1504,6 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         await self._transport.publish("cmd_vel", {"vel": linear, "rev": angular})
-
-    async def set_sound_param(self, volume: int, enabled: int) -> None:
-        """Set sound volume and enable/disable audio output.
-
-        Args:
-            volume:  Volume level (0-100).
-            enabled: 1 to enable audio, 0 to disable.
-        """
-        await self._ensure_controller()
-        await self._transport.publish("set_sound_param", {"volume": volume, "enable": enabled})
 
     # ------------------------------------------------------------------
     # Map management (destructive)

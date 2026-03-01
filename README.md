@@ -8,7 +8,7 @@
 Python library for **local control** of [Yarbo](https://yarbo.com/) robot
 mowers and snow blowers via MQTT.
 
-> **Status**: Alpha (0.1.0) — local MQTT control is functional and confirmed working
+> **Status**: 2026.3.10 — local MQTT control is functional and confirmed working
 > on hardware.
 
 ## Features
