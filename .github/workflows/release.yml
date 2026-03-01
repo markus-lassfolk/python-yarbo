@@ -6,7 +6,8 @@ on:
       - 'v*'
 
 permissions:
-  contents: write  # create GitHub release
+  contents: write
+  id-token: write  # OIDC for PyPI Trusted Publishers
 
 jobs:
   # ── Re-run full CI before releasing ──────────────────────────────────────
@@ -76,13 +77,10 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Install build tools
-        run: pip install build twine
+        run: pip install build
 
       - name: Build sdist + wheel
         run: python -m build
-
-      - name: Verify distribution
-        run: twine check dist/*
 
       - name: Extract changelog for this version
         id: changelog
@@ -102,14 +100,7 @@ jobs:
           path: dist/
 
       - name: Publish to PyPI
-        env:
-          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
-        run: |
-          if [ -z "$PYPI_API_TOKEN" ]; then
-            echo "PYPI_API_TOKEN secret not set — skipping PyPI publish."
-            exit 0
-          fi
-          twine upload --username __token__ --password "$PYPI_API_TOKEN" dist/*
+        uses: pypa/gh-action-pypi-publish@release/v1
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
