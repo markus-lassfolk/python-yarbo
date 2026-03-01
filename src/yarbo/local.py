@@ -93,6 +93,10 @@ class YarboLocalClient:
         sn: str = "",
         port: int = LOCAL_PORT,
         auto_controller: bool = True,
+        mqtt_log_path: str | None = None,
+        debug: bool = False,
+        debug_raw: bool = False,
+        mqtt_capture_max: int = 0,
     ) -> None:
         self._broker = broker
         self._sn = sn
@@ -100,6 +104,11 @@ class YarboLocalClient:
         self._auto_controller = auto_controller
         self._transport = MqttTransport(broker=broker, sn=sn, port=port)
         self._controller_acquired = False
+        self._mqtt_log_path = mqtt_log_path
+        self._debug = debug
+        self._debug_raw = debug_raw
+        self._mqtt_capture_max = mqtt_capture_max
+        self._captured_mqtt: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Context manager
@@ -143,6 +152,10 @@ class YarboLocalClient:
     async def disconnect(self) -> None:
         """Disconnect from the local MQTT broker."""
         await self._transport.disconnect()
+
+    def get_captured_mqtt(self) -> list[dict[str, Any]]:
+        """Return captured MQTT messages (populated when mqtt_capture_max > 0)."""
+        return list(self._captured_mqtt)
 
     @property
     def is_connected(self) -> bool:
@@ -894,6 +907,14 @@ class YarboLocalClient:
         await self._ensure_controller()
         await self._transport.publish("usb_toggle", {"enabled": enabled})
 
+    async def check_camera_status(self) -> YarboCommandResult:
+        """Request current camera status."""
+        return await self._publish_and_wait("check_camera_status", {})
+
+    async def camera_calibration(self) -> YarboCommandResult:
+        """Trigger camera calibration."""
+        return await self._publish_and_wait("camera_calibration", {})
+
     # ------------------------------------------------------------------
     # Plans & scheduling
     # ------------------------------------------------------------------
@@ -1095,6 +1116,18 @@ class YarboLocalClient:
             Response payload dict, or empty dict on timeout.
         """
         return await self._request_data_feedback("hub_info", {}, timeout)
+
+    async def get_saved_wifi_list(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request saved Wi-Fi networks from the robot and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("get_saved_wifi_list", {}, timeout)
 
     # ------------------------------------------------------------------
     # Diagnostics (read-only telemetry requests)
@@ -1443,6 +1476,31 @@ class YarboLocalClient:
         await self._ensure_controller()
         await self._transport.publish("set_ipcamera_ota_switch", {"state": state})
 
+    async def firmware_update_now(self, *, confirm: bool = False) -> YarboCommandResult:
+        """Trigger an immediate firmware update.
+
+        .. warning::
+            This is a **destructive** operation. You must pass ``confirm=True`` to proceed.
+
+        Args:
+            confirm: Must be ``True`` to proceed.
+
+        Raises:
+            ValueError: If *confirm* is not ``True``.
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        if not confirm:
+            raise ValueError("firmware_update_now is destructive — pass confirm=True to proceed.")
+        return await self._publish_and_wait("firmware_update_now", {})
+
+    async def firmware_update_tonight(self) -> YarboCommandResult:
+        """Schedule a firmware update for tonight."""
+        return await self._publish_and_wait("firmware_update_tonight", {})
+
+    async def firmware_update_later(self) -> YarboCommandResult:
+        """Defer a pending firmware update."""
+        return await self._publish_and_wait("firmware_update_later", {})
+
     # ------------------------------------------------------------------
     # Vision / recording
     # ------------------------------------------------------------------
@@ -1464,6 +1522,15 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         await self._transport.publish("enable_video_record", {"state": state})
+
+    async def bag_record(self, enabled: bool) -> None:
+        """Start or stop bag recording.
+
+        Args:
+            enabled: True to start recording, False to stop.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("bag_record", {"state": 1 if enabled else 0})
 
     # ------------------------------------------------------------------
     # Safety / fencing
