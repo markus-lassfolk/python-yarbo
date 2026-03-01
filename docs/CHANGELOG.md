@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2026.3.15] — 2026-03-02
+
+### Added
+- `get_controller(timeout=...)` — optional timeout parameter for controller handshake
+
+### Fixed
+- CLI: clarify discovery message when no `--broker`/`--sn` provided
+- MQTT: log normal disconnect (rc=0) at DEBUG instead of WARNING
+
+### Changed
+- Version bump to 2026.3.15
+
+---
+
 ## [2026.3.11] — 2026-03-01
 
 ### Added
