@@ -33,6 +33,7 @@ References:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 import logging
 import time
@@ -752,6 +753,473 @@ class YarboLocalClient:
         return await self._publish_and_wait("save_plan", payload)
 
     # ------------------------------------------------------------------
+    # Robot control
+    # ------------------------------------------------------------------
+
+    async def shutdown(self) -> None:
+        """Power off the robot."""
+        await self._ensure_controller()
+        await self._transport.publish("shutdown", {})
+
+    async def restart_container(self) -> None:
+        """Restart the EMQX container on the robot."""
+        await self._ensure_controller()
+        await self._transport.publish("restart_container", {})
+
+    async def emergency_stop(self) -> None:
+        """Trigger an emergency stop."""
+        await self._ensure_controller()
+        await self._transport.publish("emergency_stop_active", {})
+
+    async def emergency_unlock(self) -> None:
+        """Clear the emergency stop state."""
+        await self._ensure_controller()
+        await self._transport.publish("emergency_unlock", {})
+
+    async def dstop(self) -> None:
+        """Soft-stop the robot (decelerate to halt)."""
+        await self._ensure_controller()
+        await self._transport.publish("dstop", {})
+
+    async def resume(self) -> None:
+        """Resume operation after a pause or soft-stop."""
+        await self._ensure_controller()
+        await self._transport.publish("resume", {})
+
+    async def cmd_recharge(self) -> None:
+        """Send the robot back to its charging dock."""
+        await self._ensure_controller()
+        await self._transport.publish("cmd_recharge", {})
+
+    # ------------------------------------------------------------------
+    # Lights & sound
+    # ------------------------------------------------------------------
+
+    async def set_head_light(self, enabled: bool) -> None:
+        """
+        Enable or disable the head light.
+
+        Args:
+            enabled: True to turn on, False to turn off.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("head_light", {"state": 1 if enabled else 0})
+
+    async def set_roof_lights(self, enabled: bool) -> None:
+        """
+        Enable or disable the roof lights.
+
+        Args:
+            enabled: True to turn on, False to turn off.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("roof_lights_enable", {"enable": 1 if enabled else 0})
+
+    async def set_laser(self, enabled: bool) -> None:
+        """
+        Enable or disable the laser.
+
+        Args:
+            enabled: True to enable, False to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("laser_toggle", {"enabled": enabled})
+
+    async def set_sound(self, volume: int, song_id: int = 0) -> None:
+        """
+        Set the speaker volume.
+
+        Args:
+            volume:  Volume level (0-100).
+            song_id: Song identifier (reserved, default 0).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_sound_param", {"vol": volume, "songId": song_id})
+
+    async def play_song(self, song_id: int) -> None:
+        """
+        Play a sound/song by ID.
+
+        Args:
+            song_id: Identifier of the song to play.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("song_cmd", {"songId": song_id})
+
+    # ------------------------------------------------------------------
+    # Camera & detection
+    # ------------------------------------------------------------------
+
+    async def set_camera(self, enabled: bool) -> None:
+        """
+        Enable or disable the camera.
+
+        Args:
+            enabled: True to enable, False to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("camera_toggle", {"enabled": enabled})
+
+    async def set_person_detect(self, enabled: bool) -> None:
+        """
+        Enable or disable person detection.
+
+        Args:
+            enabled: True to enable, False to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_person_detect", {"enable": 1 if enabled else 0})
+
+    async def set_usb(self, enabled: bool) -> None:
+        """
+        Enable or disable the USB port.
+
+        Args:
+            enabled: True to enable, False to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("usb_toggle", {"enabled": enabled})
+
+    # ------------------------------------------------------------------
+    # Plans & scheduling
+    # ------------------------------------------------------------------
+
+    async def start_plan_direct(self, plan_id: int, percent: int = 100) -> None:
+        """
+        Start a work plan by numeric ID (direct command, no response).
+
+        Args:
+            plan_id: Numeric ID of the plan to execute.
+            percent: Coverage percentage (default 100).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("start_plan", {"planId": plan_id, "percent": percent})
+
+    async def read_plan(self, plan_id: int, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request detail for a specific plan and await the data_feedback response.
+
+        Args:
+            plan_id: Numeric plan ID.
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("read_plan", {"id": plan_id}, timeout)
+
+    async def read_all_plans(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request all plan summaries and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("read_all_plan", {}, timeout)
+
+    async def delete_plan_direct(self, plan_id: int, confirm: bool = False) -> None:
+        """
+        Delete a plan by numeric ID (direct command, no response).
+
+        Args:
+            plan_id: Numeric plan ID to delete.
+            confirm: Must be ``True`` to proceed — this is a destructive operation.
+
+        Raises:
+            ValueError: If *confirm* is not ``True``.
+        """
+        if not confirm:
+            raise ValueError("delete_plan_direct is destructive — pass confirm=True to proceed.")
+        await self._ensure_controller()
+        await self._transport.publish("del_plan", {"planId": plan_id})
+
+    async def delete_all_plans(self, confirm: bool = False) -> None:
+        """Delete all stored plans from the robot.
+
+        Args:
+            confirm: Must be ``True`` to proceed — this is a destructive operation.
+
+        Raises:
+            ValueError: If *confirm* is not ``True``.
+        """
+        if not confirm:
+            raise ValueError("delete_all_plans is destructive — pass confirm=True to proceed.")
+        await self._ensure_controller()
+        await self._transport.publish("del_all_plan", {})
+
+    async def pause_planning(self) -> None:
+        """Pause the currently running plan (direct command, no response)."""
+        await self._ensure_controller()
+        await self._transport.publish("planning_paused", {})
+
+    async def in_plan_action(self, action: str) -> None:
+        """
+        Send an in-plan action command.
+
+        Args:
+            action: Action string (e.g. ``"pause"``, ``"resume"``, ``"stop"``).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("in_plan_action", {"action": action})
+
+    async def read_schedules(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request all schedules and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("read_schedules", {}, timeout)
+
+    # ------------------------------------------------------------------
+    # Navigation & maps
+    # ------------------------------------------------------------------
+
+    async def start_waypoint(self, index: int) -> None:
+        """
+        Start navigation to a waypoint by index.
+
+        Args:
+            index: Zero-based waypoint index.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("start_way_point", {"index": index})
+
+    async def read_recharge_point(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request the saved recharge/dock point and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("read_recharge_point", {}, timeout)
+
+    async def save_charging_point(self) -> None:
+        """Save the robot's current position as the charging/dock point."""
+        await self._ensure_controller()
+        await self._transport.publish("save_charging_point", {})
+
+    async def read_clean_area(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request the clean area definition and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("read_clean_area", {}, timeout)
+
+    async def get_all_map_backup(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request all map backups and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("get_all_map_backup", {}, timeout)
+
+    async def save_map_backup(self) -> None:
+        """Save a backup of the current map."""
+        await self._ensure_controller()
+        await self._transport.publish("save_map_backup", {})
+
+    # ------------------------------------------------------------------
+    # WiFi & connectivity
+    # ------------------------------------------------------------------
+
+    async def get_wifi_list(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request the list of available WiFi networks and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("get_wifi_list", {}, timeout)
+
+    async def get_connected_wifi(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request the currently connected WiFi network name and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("get_connect_wifi_name", {}, timeout)
+
+    async def start_hotspot(self) -> None:
+        """Start the robot's WiFi hotspot."""
+        await self._ensure_controller()
+        await self._transport.publish("start_hotspot", {})
+
+    async def get_hub_info(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request hub information and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("hub_info", {}, timeout)
+
+    # ------------------------------------------------------------------
+    # Diagnostics (read-only telemetry requests)
+    # ------------------------------------------------------------------
+
+    async def read_no_charge_period(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request no-charge period configuration and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("read_no_charge_period", {}, timeout)
+
+    async def get_battery_cell_temps(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request battery cell temperature data and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("battery_cell_temp_msg", {}, timeout)
+
+    async def get_motor_temps(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request motor temperature data and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("motor_temp_samp", {}, timeout)
+
+    async def get_body_current(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request body current telemetry and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("body_current_msg", {}, timeout)
+
+    async def get_head_current(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request head current telemetry and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("head_current_msg", {}, timeout)
+
+    async def get_speed(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request current speed telemetry and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("speed_msg", {}, timeout)
+
+    async def get_odometer(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request odometer data and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("odometer_msg", {}, timeout)
+
+    async def get_product_code(self, timeout: float = 5.0) -> dict[str, Any]:
+        """
+        Request the product code and await the data_feedback response.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback("product_code_msg", {}, timeout)
+
+    # ------------------------------------------------------------------
+    # Data feedback helper
+    # ------------------------------------------------------------------
+
+    async def _request_data_feedback(
+        self, cmd: str, payload: dict[str, Any], timeout: float = 5.0
+    ) -> dict[str, Any]:
+        """
+        Send a command and wait for the matching ``data_feedback`` response.
+
+        Pre-registers a receive queue before publishing to eliminate any
+        publish/subscribe race condition.
+
+        Args:
+            cmd:     Topic leaf name of the command to send.
+            payload: Payload dict to publish.
+            timeout: Seconds to wait for the response.
+
+        Returns:
+            Decoded response payload dict, or empty dict on timeout.
+        """
+        await self._ensure_controller()
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish(cmd, payload)
+            msg = await self._transport.wait_for_message(
+                timeout=timeout,
+                feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+                command_name=cmd,
+                _queue=wait_queue,
+            )
+            return msg if isinstance(msg, dict) else {}
+        except Exception:
+            with contextlib.suppress(ValueError):
+                self._transport._message_queues.remove(wait_queue)
+            raise
+
+    # ------------------------------------------------------------------
     # Raw publish (escape hatch)
     # ------------------------------------------------------------------
 
@@ -782,6 +1250,339 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         await self._transport.publish(cmd, payload)
+
+
+    async def publish_command(self, cmd: str, payload: dict[str, Any]) -> None:
+        """Alias for :meth:`publish_raw` — publish an arbitrary command to the robot.
+
+        Args:
+            cmd:     Topic leaf (e.g. ``"set_blade_height"``).
+            payload: Dict payload (will be zlib-encoded).
+        """
+        await self.publish_raw(cmd, payload)
+
+    # ------------------------------------------------------------------
+    # Blade / mowing configuration
+    # ------------------------------------------------------------------
+
+    async def set_blade_height(self, height: int) -> None:
+        """Set the blade cutting height.
+
+        Args:
+            height: Blade height value (robot-defined units).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_blade_height", {"height": height})
+
+    async def set_blade_speed(self, speed: int) -> None:
+        """Set the blade rotation speed.
+
+        Args:
+            speed: Blade speed value (robot-defined units).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_blade_speed", {"speed": speed})
+
+    async def set_charge_limit(self, min_pct: int, max_pct: int) -> None:
+        """Set battery charge limits.
+
+        Args:
+            min_pct: Minimum charge percentage before robot returns to dock.
+            max_pct: Maximum charge percentage (charge stops here).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_charge_limit", {"min": min_pct, "max": max_pct})
+
+    async def set_turn_type(self, turn_type: int) -> None:
+        """Set the turning behaviour type.
+
+        Args:
+            turn_type: Integer representing the turn mode (robot-defined).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_turn_type", {"turnType": turn_type})
+
+    # ------------------------------------------------------------------
+    # Snow blower accessories
+    # ------------------------------------------------------------------
+
+    async def push_snow_dir(self, direction: int) -> None:
+        """Set the snow push direction.
+
+        Args:
+            direction: Direction integer (robot-defined).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("push_snow_dir", {"direction": direction})
+
+    async def set_chute_steering_work(self, angle: int) -> None:
+        """Set the chute steering angle during work.
+
+        Args:
+            angle: Steering angle in degrees.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_chute_streeing_work", {"angle": angle})
+
+    async def set_roller_speed(self, speed: int) -> None:
+        """Set the roller/blower speed.
+
+        Args:
+            speed: Speed value (robot-defined units).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_roller", {"speed": speed})
+
+    # ------------------------------------------------------------------
+    # Motor & mechanical
+    # ------------------------------------------------------------------
+
+    async def set_motor_protect(self, state: int) -> None:
+        """Enable or disable motor protection mode.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_motor_protect", {"state": state})
+
+    async def set_trimmer(self, state: int) -> None:
+        """Enable or disable the trimmer.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_trimmer", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Blowing / edge / smart features
+    # ------------------------------------------------------------------
+
+    async def set_edge_blowing(self, state: int) -> None:
+        """Enable or disable edge blowing.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("edge_blowing", {"state": state})
+
+    async def set_smart_blowing(self, state: int) -> None:
+        """Enable or disable smart blowing.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("smart_blowing", {"state": state})
+
+    async def set_heating_film(self, state: int) -> None:
+        """Enable or disable heating film (anti-ice).
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("heating_film_ctrl", {"state": state})
+
+    async def set_module_lock(self, state: int) -> None:
+        """Lock or unlock an accessory module.
+
+        Args:
+            state: 1 to lock, 0 to unlock.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("module_lock_ctl", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Autonomous modes
+    # ------------------------------------------------------------------
+
+    async def set_follow_mode(self, state: int) -> None:
+        """Enable or disable follow mode.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_follow_state", {"state": state})
+
+    async def set_draw_mode(self, state: int) -> None:
+        """Enable or disable draw/mapping mode.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("start_draw_cmd", {"state": state})
+
+    # ------------------------------------------------------------------
+    # OTA / firmware updates
+    # ------------------------------------------------------------------
+
+    async def set_auto_update(self, state: int) -> None:
+        """Enable or disable automatic firmware (Greengrass) updates.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_greengrass_auto_update_switch", {"state": state})
+
+    async def set_camera_ota(self, state: int) -> None:
+        """Enable or disable IP camera OTA updates.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_ipcamera_ota_switch", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Vision / recording
+    # ------------------------------------------------------------------
+
+    async def set_smart_vision(self, state: int) -> None:
+        """Enable or disable smart vision processing.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("smart_vision_control", {"state": state})
+
+    async def set_video_record(self, state: int) -> None:
+        """Enable or disable video recording.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("enable_video_record", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Safety / fencing
+    # ------------------------------------------------------------------
+
+    async def set_child_lock(self, state: int) -> None:
+        """Enable or disable the child lock.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("child_lock", {"state": state})
+
+    async def set_geo_fence(self, state: int) -> None:
+        """Enable or disable geo-fencing.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("enable_geo_fence", {"state": state})
+
+    async def set_elec_fence(self, state: int) -> None:
+        """Enable or disable the electric fence.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("enable_elec_fence", {"state": state})
+
+    async def set_ngz_edge(self, state: int) -> None:
+        """Enable or disable NGZ (no-go-zone) edge enforcement.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("ngz_edge", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Manual drive extras
+    # ------------------------------------------------------------------
+
+    async def set_velocity_manual(self, linear: float, angular: float) -> None:
+        """Send a velocity command in manual drive mode.
+
+        Args:
+            linear:  Linear velocity (forward positive).
+            angular: Angular velocity (counter-clockwise positive).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_vel", {"vel": linear, "rev": angular})
+
+    async def set_sound_param(self, volume: int, enabled: int) -> None:
+        """Set sound volume and enable/disable audio output.
+
+        Args:
+            volume:  Volume level (0-100).
+            enabled: 1 to enable audio, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_sound_param", {"volume": volume, "enable": enabled})
+
+    # ------------------------------------------------------------------
+    # Map management (destructive)
+    # ------------------------------------------------------------------
+
+    async def erase_map(self, confirm: bool = False) -> None:
+        """Erase the robot's stored map.
+
+        .. warning::
+            This is a **destructive** operation. The map cannot be recovered
+            after erasure. You must pass ``confirm=True`` to proceed.
+
+        Args:
+            confirm: Must be ``True`` to proceed.
+
+        Raises:
+            ValueError: If *confirm* is not ``True``.
+        """
+        if not confirm:
+            raise ValueError("erase_map is destructive — pass confirm=True to proceed.")
+        await self._ensure_controller()
+        await self._transport.publish("erase_map", {})
+
+    async def map_recovery(self, map_id: str, confirm: bool = False) -> None:
+        """Restore a map from a backup by ID.
+
+        .. warning::
+            This is a **destructive** operation — it overwrites the current map.
+            You must pass ``confirm=True`` to proceed.
+
+        Args:
+            map_id:  ID of the map backup to restore.
+            confirm: Must be ``True`` to proceed.
+
+        Raises:
+            ValueError: If *confirm* is not ``True``.
+        """
+        if not confirm:
+            raise ValueError("map_recovery is destructive — pass confirm=True to proceed.")
+        await self._ensure_controller()
+        await self._transport.publish("map_recovery", {"mapId": map_id})
+
+    async def save_current_map(self) -> None:
+        """Save the robot's current map state."""
+        await self._ensure_controller()
+        await self._transport.publish("save_current_map", {})
+
+    async def save_map_backup_list(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Save map backup and retrieve all map backup names and IDs.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback(
+            "save_map_backup_and_get_all_map_backup_nameandid", {}, timeout
+        )
 
     # ------------------------------------------------------------------
     # Sync wrapper

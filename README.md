@@ -5,11 +5,11 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/python-yarbo.svg)](https://pypi.org/project/python-yarbo/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Python library for **local and cloud control** of [Yarbo](https://yarbo.com/) robot
-mowers and snow blowers — built from reverse-engineered protocol knowledge.
+Python library for **local control** of [Yarbo](https://yarbo.com/) robot
+mowers and snow blowers via MQTT.
 
 > **Status**: Alpha (0.1.0) — local MQTT control is functional and confirmed working
-> on hardware. Cloud API is partially functional (JWT auth migration in progress).
+> on hardware.
 
 ## Features
 
@@ -225,8 +225,7 @@ Recommendations:
 
 ## Protocol Notes
 
-This library was built from reverse-engineering the Yarbo Flutter app and
-live packet captures. Key protocol facts:
+Key protocol facts for local MQTT communication:
 
 - **MQTT broker**: Local EMQX at `192.168.1.24:1883` or `192.168.1.55:1883`
   (check which IP your robot uses — both have been observed in production)
@@ -260,5 +259,5 @@ MIT — see [LICENSE](LICENSE).
 
 ## Disclaimer
 
-This library was built by reverse engineering. It is not affiliated with or endorsed by
+This is a community project. It is not affiliated with or endorsed by
 Yarbo. Use at your own risk. Do not expose your robot's MQTT broker to the internet.

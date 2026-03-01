@@ -72,8 +72,9 @@ class TestYarboCloudMqttClientDefaults:
         assert kwargs["broker"] == CLOUD_BROKER
         assert kwargs["port"] == CLOUD_PORT_TLS
 
-    async def test_default_username(self, mock_transport_cloud):
+    async def test_default_username(self, monkeypatch, mock_transport_cloud):
         """Username should default to CLOUD_MQTT_DEFAULT_USERNAME when env is unset."""
+        monkeypatch.delenv("YARBO_MQTT_USERNAME", raising=False)
         _, mock_t = mock_transport_cloud
         YarboCloudMqttClient(sn="TESTSN", password=_TEST_PASSWORD)
         kwargs = mock_t.call_args[1]

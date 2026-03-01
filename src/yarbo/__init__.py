@@ -1,9 +1,9 @@
 """
-yarbo — Python library for local and cloud control of Yarbo robot mowers.
+yarbo — Python library for local control of Yarbo robot mowers and snow blowers via MQTT.
 
 Yarbo makes autonomous snow blowers and lawn mowers controlled via local MQTT.
-This library was built from reverse-engineering the Yarbo Flutter app and
-probing the protocol with live hardware captures.
+This library provides typed Python methods for controlling Yarbo devices
+over the local network.
 
 Quick start (async)::
 

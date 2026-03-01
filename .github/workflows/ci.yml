@@ -92,7 +92,7 @@ jobs:
     needs: lint
     if: always() && (needs.lint.result == 'success' || needs.lint.result == 'failure')
     steps:
-      - run: exit ${{ needs.lint.result == 'success' && 0 || 1 }}
+      - run: test '${{ needs.lint.result }}' = success
 
   test-gate:
     name: Test
@@ -100,4 +100,4 @@ jobs:
     needs: test
     if: always() && (needs.test.result == 'success' || needs.test.result == 'failure')
     steps:
-      - run: exit ${{ needs.test.result == 'success' && 0 || 1 }}
+      - run: test '${{ needs.test.result }}' = success
