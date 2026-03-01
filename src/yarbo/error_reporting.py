@@ -148,7 +148,7 @@ def _scrub_mqtt_envelope(envelope: dict[str, Any]) -> dict[str, Any]:
 
 def _scrub_dict(d: dict[str, Any]) -> dict[str, Any]:
     """Recursively redact values for keys that look sensitive."""
-    result = {}
+    result: dict[str, Any] = {}
     for k, v in d.items():
         if any(s in k.lower() for s in _SCRUB_KEY_KEYWORDS):
             result[k] = "[REDACTED]"

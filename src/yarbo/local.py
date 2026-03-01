@@ -496,6 +496,30 @@ class YarboLocalClient:
             raise YarboTimeoutError(f"Timed out waiting for {cmd!r} response from robot.")
         return YarboCommandResult.from_dict(msg)
 
+    async def _request_data_feedback(
+        self,
+        cmd: str,
+        payload: dict[str, Any],
+        timeout: float = 5.0,
+    ) -> dict[str, Any]:
+        """Publish *cmd* and return the ``data`` field from ``data_feedback``."""
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish(cmd, payload)
+            msg = await self._transport.wait_for_message(
+                timeout=timeout,
+                feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+                command_name=cmd,
+                _queue=wait_queue,
+            )
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        if not isinstance(msg, dict):
+            return {}
+        data = msg.get("data", {}) or {}
+        return data if isinstance(data, dict) else {}
+
     # ------------------------------------------------------------------
     # Plan management
     # ------------------------------------------------------------------
