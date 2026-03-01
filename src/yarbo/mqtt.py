@@ -518,7 +518,10 @@ class MqttTransport:
         self._was_connected = True  # next _on_connect is a reconnect
         if self._loop and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(self._connected.clear)
-        logger.warning("MQTT disconnected rc=%s", rc)
+        if rc == 0:
+            logger.debug("MQTT disconnected rc=%s (normal)", rc)
+        else:
+            logger.warning("MQTT disconnected rc=%s", rc)
 
     def _enqueue_safe(self, q: asyncio.Queue[dict[str, Any]], envelope: dict[str, Any]) -> None:
         """
