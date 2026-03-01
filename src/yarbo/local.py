@@ -1335,8 +1335,7 @@ class YarboLocalClient:
         Args:
             speed: Speed value (robot-defined units).
         """
-        await self._ensure_controller()
-        await self._transport.publish("cmd_roller", {"speed": speed})
+        await self.set_roller(speed)
 
     # ------------------------------------------------------------------
     # Motor & mechanical

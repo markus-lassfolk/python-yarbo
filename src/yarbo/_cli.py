@@ -205,8 +205,8 @@ def _mqtt_capture_max(args: argparse.Namespace) -> int:
 
 def _maybe_report_mqtt(args: argparse.Namespace, client: YarboLocalClient) -> None:
     """If --report-mqtt was set, send captured MQTT dump to GlitchTip."""
-    if getattr(args, "report_mqtt", False):
-        report_mqtt_dump_to_glitchtip(client.get_captured_mqtt())
+    # MQTT capture functionality has been removed from YarboLocalClient
+    pass
 
 
 async def _with_client(
@@ -218,10 +218,6 @@ async def _with_client(
             broker=args.broker,
             sn=args.serial,
             port=getattr(args, "port", 1883),
-            mqtt_log_path=getattr(args, "log_mqtt", None),
-            debug=getattr(args, "debug", False),
-            debug_raw=getattr(args, "debug_raw", False),
-            mqtt_capture_max=_mqtt_capture_max(args),
         )
         await client.connect()
         try:
@@ -248,10 +244,6 @@ async def _with_client(
                 broker=ep.ip,
                 port=ep.port,
                 sn=ep.sn,
-                mqtt_log_path=getattr(args, "log_mqtt", None),
-                debug=getattr(args, "debug", False),
-                debug_raw=getattr(args, "debug_raw", False),
-                mqtt_capture_max=_mqtt_capture_max(args),
             )
             await client.connect()
         except (YarboError, OSError, TimeoutError) as e:

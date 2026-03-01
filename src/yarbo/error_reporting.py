@@ -15,10 +15,6 @@ from typing import Any
 _LOGGER = logging.getLogger(__name__)
 
 # Default DSN for the python-yarbo GlitchTip project.
-# Opt-out: set YARBO_SENTRY_DSN="" to disable error reporting.
-_DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@villapolly.duckdns.org/2"
-
-# Default DSN for the python-yarbo GlitchTip project.
 # Enabled by default during beta to help find issues.
 # Opt-out: set YARBO_SENTRY_DSN="" or pass enabled=False.
 _DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@glitchtip.lassfolk.cc/2"
@@ -47,16 +43,14 @@ def init_error_reporting(
     if not enabled:
         return
 
-    # Resolve DSN: explicit arg > YARBO_SENTRY_DSN env var > built-in default
+    # Resolve DSN: explicit arg > YARBO_SENTRY_DSN env var > SENTRY_DSN env var > built-in default
     env_dsn = os.environ.get("YARBO_SENTRY_DSN")
     if env_dsn is not None and env_dsn == "":
         _LOGGER.debug('Error reporting explicitly disabled via YARBO_SENTRY_DSN=""')
         return
-    effective_dsn = dsn or env_dsn or _DEFAULT_DSN
+    effective_dsn = dsn or env_dsn or os.environ.get("SENTRY_DSN") or _DEFAULT_DSN
 
-    dsn = dsn or env_dsn or os.environ.get("SENTRY_DSN") or _DEFAULT_DSN
-
-    if not dsn:
+    if not effective_dsn:
         return
 
     try:
