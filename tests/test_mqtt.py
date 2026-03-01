@@ -601,7 +601,9 @@ class TestMqttTlsSecurity:
             await asyncio.sleep(0)
 
         # Check both tls_set and tls_set_context calls
-        all_calls = list(mock_paho.tls_set.call_args_list) + list(mock_paho.tls_set_context.call_args_list)
+        all_calls = list(mock_paho.tls_set.call_args_list) + list(
+            mock_paho.tls_set_context.call_args_list
+        )
         for call in all_calls:
             args, kwargs = call
             assert ssl.CERT_NONE not in args, "CERT_NONE must not appear in positional args"

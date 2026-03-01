@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import pytest
 import sys
 from unittest.mock import MagicMock
+
+import pytest
 
 from yarbo.error_reporting import (
     _scrub_dict,
