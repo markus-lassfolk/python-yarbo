@@ -399,13 +399,13 @@ class TestDiagnostics:
 class TestDataFeedbackTimeout:
     async def test_timeout_returns_empty_dict(self, client, mock_transport):
         """On timeout (None from wait_for_message), returns {}."""
-        mock_transport.wait_for_message = AsyncMock(return_value=None)
+        mock_transport.wait_for_message = AsyncMock(return_value="unexpected")
         result = await client.read_plan(1)
         assert result == {}
 
     async def test_non_dict_response_returns_empty_dict(self, client, mock_transport):
         """On unexpected response type, returns {}."""
-        mock_transport.wait_for_message = AsyncMock(return_value=None)
+        mock_transport.wait_for_message = AsyncMock(return_value="unexpected")
         result = await client.get_speed()
         assert result == {}
 
