@@ -290,9 +290,17 @@ class MqttTransport:
         payload = envelope.get("payload", {})
         with self._mqtt_log_lock:
             if self._debug_raw:
-                line = json.dumps(
-                    {"direction": envelope.get("direction", "?"), "topic": topic,
-                     "payload": payload}, ensure_ascii=False) + "\n"
+                line = (
+                    json.dumps(
+                        {
+                            "direction": envelope.get("direction", "?"),
+                            "topic": topic,
+                            "payload": payload,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
                 sys.stderr.write(line)
             else:
                 sys.stderr.write(f"\n--- MQTT {prefix} ---\ntopic: {topic}\npayload:\n")

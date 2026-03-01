@@ -323,6 +323,74 @@ class YarboClient:
         return self._local.is_healthy(max_age_seconds=max_age_seconds)
 
     # ------------------------------------------------------------------
+    # Head-specific commands (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def set_roller_speed(self, speed: int) -> None:
+        """Set roller speed (leaf blower head only)."""
+        return await self._local.set_roller_speed(speed=speed)
+
+    async def set_blade_height(self, height: int) -> None:
+        """Set blade height (lawn mower / lawn mower pro head only)."""
+        return await self._local.set_blade_height(height=height)
+
+    async def set_blade_speed(self, speed: int) -> None:
+        """Set blade speed (lawn mower / lawn mower pro head only)."""
+        return await self._local.set_blade_speed(speed=speed)
+
+    async def push_snow_dir(self, direction: int) -> None:
+        """Set snow push direction (snow blower head only)."""
+        return await self._local.push_snow_dir(direction=direction)
+
+    async def set_chute_steering_work(self, state: int) -> None:
+        """Enable or disable chute auto-steering (snow blower head only)."""
+        return await self._local.set_chute_steering_work(state=state)
+
+    # ------------------------------------------------------------------
+    # Camera commands (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def check_camera_status(self) -> YarboCommandResult:
+        """Request current camera status."""
+        return await self._local.check_camera_status()
+
+    async def camera_calibration(self) -> YarboCommandResult:
+        """Trigger camera calibration."""
+        return await self._local.camera_calibration()
+
+    # ------------------------------------------------------------------
+    # Firmware update commands (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def firmware_update_now(self, *, confirm: bool = False) -> YarboCommandResult:
+        """Trigger an immediate firmware update (destructive — pass confirm=True)."""
+        return await self._local.firmware_update_now(confirm=confirm)
+
+    async def firmware_update_tonight(self) -> YarboCommandResult:
+        """Schedule a firmware update for tonight."""
+        return await self._local.firmware_update_tonight()
+
+    async def firmware_update_later(self) -> YarboCommandResult:
+        """Defer a pending firmware update."""
+        return await self._local.firmware_update_later()
+
+    # ------------------------------------------------------------------
+    # Wi-Fi management (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def get_saved_wifi_list(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Fetch saved Wi-Fi networks from the robot."""
+        return await self._local.get_saved_wifi_list(timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Recording (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def bag_record(self, enabled: bool) -> None:
+        """Start or stop bag recording."""
+        return await self._local.bag_record(enabled=enabled)
+
+    # ------------------------------------------------------------------
     # Cloud features (lazy-initialised)
     # ------------------------------------------------------------------
 

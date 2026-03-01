@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Write one DeviceMSG line to a JSONL file from the conftest fixture (for testing compare_mqtt_log without a robot)."""
+
 from __future__ import annotations
 
 import json

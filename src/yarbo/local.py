@@ -44,7 +44,14 @@ from .const import (
     TOPIC_LEAF_PLAN_FEEDBACK,
 )
 from .exceptions import YarboNotControllerError, YarboTimeoutError
-from .models import YarboCommandResult, YarboLightState, YarboPlan, YarboSchedule, YarboTelemetry
+from .models import (
+    HeadType,
+    YarboCommandResult,
+    YarboLightState,
+    YarboPlan,
+    YarboSchedule,
+    YarboTelemetry,
+)
 from .mqtt import MqttTransport
 
 if TYPE_CHECKING:
@@ -122,6 +129,7 @@ class YarboLocalClient:
             mqtt_capture_max=mqtt_capture_max,
         )
         self._controller_acquired = False
+        self._last_status: YarboTelemetry | None = None
 
     def get_captured_mqtt(self) -> list[dict[str, Any]]:
         """Return captured MQTT messages (when mqtt_capture_max > 0). For GlitchTip reports."""
@@ -158,6 +166,7 @@ class YarboLocalClient:
     async def connect(self) -> None:
         """Connect to the local MQTT broker."""
         self._transport.add_reconnect_callback(self._on_reconnect)
+        logger.debug("Connecting to broker %s:%d (sn=%s)", self._broker, self._port, self._sn)
         await self._transport.connect()
         logger.info(
             "YarboLocalClient connected to %s:%d (sn=%s)",
@@ -168,6 +177,7 @@ class YarboLocalClient:
 
     async def disconnect(self) -> None:
         """Disconnect from the local MQTT broker."""
+        logger.debug("Disconnecting from broker %s:%d (sn=%s)", self._broker, self._port, self._sn)
         await self._transport.disconnect()
 
     @property
@@ -359,7 +369,15 @@ class YarboLocalClient:
         if envelope:
             topic = envelope.get("topic", "")
             payload = envelope.get("payload", {})
-            return YarboTelemetry.from_dict(payload, topic=topic)
+            telemetry = YarboTelemetry.from_dict(payload, topic=topic)
+            self._last_status = telemetry
+            logger.debug(
+                "Received status snapshot: battery=%s state=%s head=%s",
+                telemetry.battery,
+                telemetry.state,
+                telemetry.head_name,
+            )
+            return telemetry
         return None
 
     async def watch_telemetry(self) -> AsyncIterator[YarboTelemetry]:
@@ -392,7 +410,57 @@ class YarboLocalClient:
                     t.plan_state = _plan_payload.get("state")
                     t.area_covered = _plan_payload.get("areaCovered")
                     t.duration = _plan_payload.get("duration")
+                self._last_status = t
+                logger.debug(
+                    "Telemetry: battery=%s state=%s head=%s",
+                    t.battery,
+                    t.state,
+                    t.head_name,
+                )
                 yield t
+
+    # ------------------------------------------------------------------
+    # Head validation
+    # ------------------------------------------------------------------
+
+    def _validate_head_type(self, required: HeadType | tuple[HeadType, ...]) -> None:
+        """Validate that the attached head matches the required type(s).
+
+        Args:
+            required: A single :class:`~yarbo.models.HeadType` or a tuple of
+                      acceptable head types.
+
+        Raises:
+            ValueError: If a head status has been received and the attached head
+                        does not match *required*.
+
+        If no status has been received yet (``_last_status`` is ``None`` or
+        ``head_type`` is absent), a warning is logged and the command is allowed
+        through to preserve compatibility with firmware that reports head type
+        after the first status message.
+        """
+        if isinstance(required, HeadType):
+            required = (required,)
+
+        if self._last_status is None or self._last_status.head_type is None:
+            logger.warning(
+                "Head type unknown (no status received yet) — allowing command; expected one of %s",
+                [h.name for h in required],
+            )
+            return
+
+        try:
+            current = HeadType(self._last_status.head_type)
+        except ValueError:
+            logger.warning(
+                "Unknown head_type value %r — allowing command",
+                self._last_status.head_type,
+            )
+            return
+
+        if current not in required:
+            req_names = " or ".join(h.name for h in required)
+            raise ValueError(f"Command requires {req_names} head, but {current.name} is attached")
 
     # ------------------------------------------------------------------
     # Internal helper: publish + wait for data_feedback
@@ -593,20 +661,91 @@ class YarboLocalClient:
         plans_raw: list[Any] = data.get("planList", data.get("plans", []))
         return [YarboPlan.from_dict(p) for p in plans_raw]
 
-    async def delete_plan(self, plan_id: str) -> YarboCommandResult:
+    async def delete_plan(self, plan_id: str, *, confirm: bool = False) -> YarboCommandResult:
         """Delete a plan by its ID.
 
         Args:
             plan_id: UUID of the plan to delete.
+            confirm: Must be ``True`` to confirm this destructive operation.
 
         Returns:
             :class:`~yarbo.models.YarboCommandResult` on success.
 
         Raises:
+            ValueError:        If *confirm* is not ``True``.
             YarboTimeoutError: If no acknowledgement is received.
         """
+        if not confirm:
+            raise ValueError(
+                "delete_plan is a destructive operation. Pass confirm=True to confirm."
+            )
         await self._ensure_controller()
         return await self._publish_and_wait("del_plan", {"planId": plan_id})
+
+    async def delete_all_plans(self, *, confirm: bool = False) -> YarboCommandResult:
+        """Delete all saved plans on the robot.
+
+        Args:
+            confirm: Must be ``True`` to confirm this destructive operation.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            ValueError:        If *confirm* is not ``True``.
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        if not confirm:
+            raise ValueError(
+                "delete_all_plans is a destructive operation. Pass confirm=True to confirm."
+            )
+        await self._ensure_controller()
+        return await self._publish_and_wait("del_all_plan", {})
+
+    async def erase_map(self, *, confirm: bool = False) -> YarboCommandResult:
+        """Erase the current map stored on the robot.
+
+        Args:
+            confirm: Must be ``True`` to confirm this destructive operation.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            ValueError:        If *confirm* is not ``True``.
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        if not confirm:
+            raise ValueError("erase_map is a destructive operation. Pass confirm=True to confirm.")
+        await self._ensure_controller()
+        return await self._publish_and_wait("erase_map", {})
+
+    async def map_recovery(
+        self, map_id: str | None = None, *, confirm: bool = False
+    ) -> YarboCommandResult:
+        """Recover a previously saved map.
+
+        Args:
+            map_id:  Optional map ID to restore. If ``None``, the robot uses its
+                     default recovery behaviour.
+            confirm: Must be ``True`` to confirm this destructive operation.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            ValueError:        If *confirm* is not ``True``.
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        if not confirm:
+            raise ValueError(
+                "map_recovery is a destructive operation. Pass confirm=True to confirm."
+            )
+        payload: dict[str, Any] = {}
+        if map_id is not None:
+            payload["mapId"] = map_id
+        await self._ensure_controller()
+        return await self._publish_and_wait("map_recovery", payload)
 
     # ------------------------------------------------------------------
     # Manual drive
@@ -779,7 +918,6 @@ class YarboLocalClient:
         }
         return await self._publish_and_wait("save_plan", payload)
 
-
     # ------------------------------------------------------------------
     # System control
     # ------------------------------------------------------------------
@@ -874,66 +1012,90 @@ class YarboLocalClient:
         return await self._publish_and_wait("ignore_obstacles", {"state": 1 if state else 0})
 
     # ------------------------------------------------------------------
-    # System control
+    # Head-specific commands — Leaf Blower
     # ------------------------------------------------------------------
 
-    async def shutdown(self) -> YarboCommandResult:
-        """Shut down the robot.
-
-        Returns:
-            :class:`~yarbo.models.YarboCommandResult` on success.
-
-        Raises:
-            YarboTimeoutError: If no acknowledgement is received.
-        """
-        await self._ensure_controller()
-        return await self._publish_and_wait("shutdown", {})
-
-    async def restart_container(self) -> YarboCommandResult:
-        """Restart the software container on the robot.
-
-        Returns:
-            :class:`~yarbo.models.YarboCommandResult` on success.
-
-        Raises:
-            YarboTimeoutError: If no acknowledgement is received.
-        """
-        await self._ensure_controller()
-        return await self._publish_and_wait("restart_container", {})
-
-    # ------------------------------------------------------------------
-    # Area management
-    # ------------------------------------------------------------------
-
-    async def read_clean_area(self) -> YarboCommandResult:
-        """Request the list of saved clean areas from the robot.
-
-        Returns:
-            :class:`~yarbo.models.YarboCommandResult` on success.
-
-        Raises:
-            YarboTimeoutError: If no acknowledgement is received.
-        """
-        await self._ensure_controller()
-        return await self._publish_and_wait("read_clean_area", {})
-
-    # ------------------------------------------------------------------
-    # Safety & detection
-    # ------------------------------------------------------------------
-
-    async def set_person_detect(self, enabled: bool) -> YarboCommandResult:
-        """Enable or disable person detection.
-
-        Sends ``{"disable": not enabled}`` to the robot. Note the inversion:
-        the wire protocol uses a *disable* flag.
-
-        .. note::
-            Some firmware versions may additionally require a ``"key"`` field
-            in the payload. If detection toggling has no effect, consult the
-            firmware changelog and add the ``"key"`` field accordingly.
+    async def set_roller_speed(self, speed: int) -> None:
+        """Set the roller speed on a leaf blower head.
 
         Args:
-            enabled: ``True`` to enable person detection, ``False`` to disable.
+            speed: Roller speed (0-2000 RPM range observed in protocol documentation).
+
+        Raises:
+            ValueError: If the attached head is not a LeafBlower.
+        """
+        self._validate_head_type(HeadType.LeafBlower)
+        await self._ensure_controller()
+        await self._transport.publish("set_roller_speed", {"speed": speed})
+
+    # ------------------------------------------------------------------
+    # Head-specific commands — Lawn Mower / Lawn Mower Pro
+    # ------------------------------------------------------------------
+
+    async def set_blade_height(self, height: int) -> None:
+        """Set the mowing blade height.
+
+        Args:
+            height: Blade height level as an integer (observed range: 1-5 per
+                    protocol documentation).
+
+        Raises:
+            ValueError: If the attached head is not LawnMower or LawnMowerPro.
+        """
+        self._validate_head_type((HeadType.LawnMower, HeadType.LawnMowerPro))
+        await self._ensure_controller()
+        await self._transport.publish("set_blade_height", {"height": height})
+
+    async def set_blade_speed(self, speed: int) -> None:
+        """Set the mowing blade speed.
+
+        Args:
+            speed: Blade speed value (observed range: 0-100 per protocol
+                   documentation).
+
+        Raises:
+            ValueError: If the attached head is not LawnMower or LawnMowerPro.
+        """
+        self._validate_head_type((HeadType.LawnMower, HeadType.LawnMowerPro))
+        await self._ensure_controller()
+        await self._transport.publish("set_blade_speed", {"speed": speed})
+
+    # ------------------------------------------------------------------
+    # Head-specific commands — Snow Blower
+    # ------------------------------------------------------------------
+
+    async def push_snow_dir(self, direction: int) -> None:
+        """Set the snow push direction (snow blower head only).
+
+        Args:
+            direction: Direction value as integer (protocol documentation values).
+
+        Raises:
+            ValueError: If the attached head is not a SnowBlower.
+        """
+        self._validate_head_type(HeadType.SnowBlower)
+        await self._ensure_controller()
+        await self._transport.publish("push_snow_dir", {"dir": direction})
+
+    async def set_chute_steering_work(self, state: int) -> None:
+        """Enable or disable chute auto-steering (snow blower head only).
+
+        Args:
+            state: 1 to enable auto-steering, 0 to disable.
+
+        Raises:
+            ValueError: If the attached head is not a SnowBlower.
+        """
+        self._validate_head_type(HeadType.SnowBlower)
+        await self._ensure_controller()
+        await self._transport.publish("set_chute_steering_work", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Camera commands
+    # ------------------------------------------------------------------
+
+    async def check_camera_status(self) -> YarboCommandResult:
+        """Request the current camera status from the robot.
 
         Returns:
             :class:`~yarbo.models.YarboCommandResult` on success.
@@ -942,20 +1104,52 @@ class YarboLocalClient:
             YarboTimeoutError: If no acknowledgement is received.
         """
         await self._ensure_controller()
-        return await self._publish_and_wait("set_person_detect", {"disable": not enabled})
+        return await self._publish_and_wait("check_camera_status", {})
 
-    async def set_ignore_obstacles(self, state: bool) -> YarboCommandResult:
-        """Enable or disable obstacle detection bypass.
+    async def camera_calibration(self) -> YarboCommandResult:
+        """Trigger camera calibration on the robot.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("camera_calibration", {})
+
+    # ------------------------------------------------------------------
+    # Firmware update commands
+    # ------------------------------------------------------------------
+
+    async def firmware_update_now(self, *, confirm: bool = False) -> YarboCommandResult:
+        """Trigger an immediate firmware update.
 
         .. warning::
-            **Safety hazard.** Disabling obstacle detection allows the robot
-            to continue moving even when obstacles are detected. Only use this
-            in controlled environments where you are certain there are no
-            people, animals, or objects in the robot's path.
+            **Destructive operation.** This reboots the robot and applies the
+            pending firmware update immediately, interrupting any active plan.
+            Pass ``confirm=True`` to confirm the intent and execute.
 
         Args:
-            state: ``True`` to ignore obstacles (bypass detection),
-                   ``False`` to restore normal obstacle detection.
+            confirm: Must be ``True`` to execute. Prevents accidental invocation.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            ValueError:        If ``confirm`` is not ``True``.
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        if not confirm:
+            raise ValueError(
+                "firmware_update_now() is a destructive operation that reboots the robot. "
+                "Pass confirm=True to proceed."
+            )
+        await self._ensure_controller()
+        return await self._publish_and_wait("firmware_update_now", {})
+
+    async def firmware_update_tonight(self) -> YarboCommandResult:
+        """Schedule a firmware update to run tonight (during low-activity hours).
 
         Returns:
             :class:`~yarbo.models.YarboCommandResult` on success.
@@ -964,7 +1158,65 @@ class YarboLocalClient:
             YarboTimeoutError: If no acknowledgement is received.
         """
         await self._ensure_controller()
-        return await self._publish_and_wait("ignore_obstacles", {"state": 1 if state else 0})
+        return await self._publish_and_wait("firmware_update_tonight", {})
+
+    async def firmware_update_later(self) -> YarboCommandResult:
+        """Defer a pending firmware update to a later, unspecified time.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("firmware_update_later", {})
+
+    # ------------------------------------------------------------------
+    # Wi-Fi management
+    # ------------------------------------------------------------------
+
+    async def get_saved_wifi_list(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> dict[str, Any]:
+        """Fetch the list of saved Wi-Fi networks from the robot.
+
+        Returns the ``data`` field of the ``data_feedback`` response, which
+        contains the network list as observed in protocol documentation.
+
+        Args:
+            timeout: Maximum wait time in seconds (default 5.0).
+
+        Returns:
+            Dict containing the Wi-Fi list (empty dict on timeout).
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("get_saved_wifi_list", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="get_saved_wifi_list",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return {}
+        data = msg.get("data", {}) or {}
+        return data if isinstance(data, dict) else {"data": data}
+
+    # ------------------------------------------------------------------
+    # Recording
+    # ------------------------------------------------------------------
+
+    async def bag_record(self, enabled: bool) -> None:
+        """Start or stop bag recording on the robot.
+
+        Args:
+            enabled: ``True`` to start recording, ``False`` to stop.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("bag_record", {"state": 1 if enabled else 0})
 
     # ------------------------------------------------------------------
     # Raw publish (escape hatch)

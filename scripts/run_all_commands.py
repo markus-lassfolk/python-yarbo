@@ -45,9 +45,13 @@ def main() -> int:
         description="Run all read-only yarbo commands (discover, status, battery, telemetry, plans, schedules, global-params, map)."
     )
     ap.add_argument("--broker", type=str, default=None, help="Broker IP (omit to auto-discover).")
-    ap.add_argument("--sn", type=str, default=None, dest="serial", help="Robot serial (omit to auto-discover).")
+    ap.add_argument(
+        "--sn", type=str, default=None, dest="serial", help="Robot serial (omit to auto-discover)."
+    )
     ap.add_argument("--port", type=int, default=1883, help="MQTT port (default: 1883).")
-    ap.add_argument("--timeout", type=float, default=10.0, help="Timeout per command (default: 10).")
+    ap.add_argument(
+        "--timeout", type=float, default=10.0, help="Timeout per command (default: 10)."
+    )
     ap.add_argument(
         "--log-mqtt",
         type=str,
@@ -119,7 +123,11 @@ def main() -> int:
 
     if args.log_mqtt:
         print("Raw MQTT messages appended to:", args.log_mqtt)
-        print("Run: python scripts/compare_mqtt_log.py", args.log_mqtt, "to list all keys and compare with CLI.")
+        print(
+            "Run: python scripts/compare_mqtt_log.py",
+            args.log_mqtt,
+            "to list all keys and compare with CLI.",
+        )
     return 0
 
 

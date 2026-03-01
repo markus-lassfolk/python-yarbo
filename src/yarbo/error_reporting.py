@@ -123,7 +123,7 @@ def report_mqtt_dump_to_glitchtip(
     scrubbed = [_scrub_mqtt_envelope(m) for m in trimmed]
     dump = json.dumps(scrubbed, indent=2, ensure_ascii=False)
     if len(dump) > max_payload_chars:
-        dump = dump[: max_payload_chars] + "\n... (truncated)"
+        dump = dump[:max_payload_chars] + "\n... (truncated)"
 
     sentry_sdk.capture_message(
         "MQTT dump (user-reported)",

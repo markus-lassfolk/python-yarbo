@@ -12,10 +12,9 @@ from __future__ import annotations
 import asyncio
 import socket
 import time
-from collections.abc import AsyncIterator
 
 from yarbo.const import LOCAL_PORT
-from yarbo.models import TelemetryEnvelope, YarboTelemetry
+from yarbo.models import TelemetryEnvelope
 from yarbo.mqtt import MqttTransport
 
 # Edit for your network or pass via CLI (use yarbo discover to find Rover/DC IPs).
@@ -83,7 +82,9 @@ async def run_investigation() -> None:
     print("-" * 40)
     for host in BROKERS:
         r = tcp_probe(host)
-        status = f"OK (RTT {r['rtt_ms']} ms)" if r.get("connect_ok") else f"FAIL — {r.get('error', '?')}"
+        status = (
+            f"OK (RTT {r['rtt_ms']} ms)" if r.get("connect_ok") else f"FAIL — {r.get('error', '?')}"
+        )
         hostname = f"  hostname: {r['hostname']}" if r.get("hostname") else ""
         print(f"  {host}: {status}{hostname}")
     print()
@@ -101,7 +102,7 @@ async def run_investigation() -> None:
             )
             results[broker] = (telemetry, heartbeats)
             print(f"got {len(telemetry)} DeviceMSG, {len(heartbeats)} heart_beat")
-        except asyncio.TimeoutError:
+        except TimeoutError:
             print("timeout")
             results[broker] = ([], [])
         except Exception as e:
@@ -135,7 +136,10 @@ async def run_investigation() -> None:
             pass
         # Message spacing (interval between first few)
         if len(telemetry) >= 2:
-            intervals = [round((telemetry[i][0] - telemetry[i - 1][0]) * 1000) for i in range(1, len(telemetry))]
+            intervals = [
+                round((telemetry[i][0] - telemetry[i - 1][0]) * 1000)
+                for i in range(1, len(telemetry))
+            ]
             print(f"    Intervals (ms): {intervals}")
 
     # --- Difference check ---
@@ -151,13 +155,17 @@ async def run_investigation() -> None:
         if keys1 == keys2:
             print("  DeviceMSG structure: same top-level keys on both brokers")
         else:
-            print(f"  DeviceMSG structure: DIFFERENT keys — only in .24: {keys1 - keys2}; only in .55: {keys2 - keys1}")
+            print(
+                f"  DeviceMSG structure: DIFFERENT keys — only in .24: {keys1 - keys2}; only in .55: {keys2 - keys1}"
+            )
         # Compare a few key nested values (e.g. battery)
         for path in [("BatteryMSG", "capacity"), ("StateMSG", "working_state")]:
             v1 = (p1.get(path[0]) or {}).get(path[1]) if isinstance(p1.get(path[0]), dict) else None
             v2 = (p2.get(path[0]) or {}).get(path[1]) if isinstance(p2.get(path[0]), dict) else None
             if v1 is not None or v2 is not None:
-                print(f"  {path[0]}.{path[1]}: .24={v1}  .55={v2}  {'(same)' if v1 == v2 else '(diff)'}")
+                print(
+                    f"  {path[0]}.{path[1]}: .24={v1}  .55={v2}  {'(same)' if v1 == v2 else '(diff)'}"
+                )
     else:
         print("  (not enough data to compare)")
     print()

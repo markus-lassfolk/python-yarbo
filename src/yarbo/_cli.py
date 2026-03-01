@@ -411,6 +411,13 @@ def _main() -> None:  # noqa: PLR0915
     # Env can enable debug so troubleshooting works without passing --debug every time.
     _apply_debug_env(args)
 
+    # When --debug is active, enable Python logging at DEBUG level so logger.debug()
+    # calls throughout the library are visible in the terminal.
+    if getattr(args, "debug", False):
+        logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s %(message)s")
+    else:
+        logging.basicConfig(level=logging.WARNING, format="%(message)s")
+
     handlers = {
         "discover": _run_discover,
         "status": _run_status,
