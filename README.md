@@ -12,6 +12,8 @@ mowers and snow blowers — a community-developed project.
 > but experimental and not fully tested. Do not rely on cloud features in production.
 > Cloud support will be validated in a future release.
 
+> **⚠️ Disclaimer:** This is a community-driven Python library and is not affiliated with, endorsed by, or supported by Yarbo Inc. or any of its subsidiaries.
+
 ## Features
 
 - 🔌 **Local MQTT control** — no cloud account required
