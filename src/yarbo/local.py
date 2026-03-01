@@ -210,7 +210,7 @@ class YarboLocalClient:
     # Controller handshake
     # ------------------------------------------------------------------
 
-    async def get_controller(self) -> YarboCommandResult:
+    async def get_controller(self, timeout: float | None = None) -> YarboCommandResult:
         """
         Acquire controller role for this session.
 
@@ -239,7 +239,7 @@ class YarboLocalClient:
             self._transport.release_queue(wait_queue)
             raise
         msg = await self._transport.wait_for_message(
-            timeout=DEFAULT_CMD_TIMEOUT,
+            timeout=timeout or DEFAULT_CMD_TIMEOUT,
             feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
             command_name="get_controller",
             _queue=wait_queue,
