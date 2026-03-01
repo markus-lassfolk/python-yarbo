@@ -4,8 +4,7 @@ cloud_login.py — Authenticate with the Yarbo cloud API and list bound robots.
 
 Requires:
     pip install "python-yarbo[cloud]"
-    RSA public key from the Yarbo APK (assets/rsa_key/rsa_public_key.pem)
-    See: https://github.com/markus-lassfolk/yarbo-reversing
+    RSA public key PEM file (see src/yarbo/keys/README.md for how to obtain it)
 
 Usage:
     python examples/cloud_login.py --username you@example.com --password secret \\
@@ -72,7 +71,7 @@ if __name__ == "__main__":
     ap.add_argument(
         "--key",
         default=os.environ.get("YARBO_RSA_KEY_PATH"),
-        help="Path to RSA public key PEM (from APK)",
+        help="Path to RSA public key PEM (see keys/README.md)",
     )
     args = ap.parse_args()
 

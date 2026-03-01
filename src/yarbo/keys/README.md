@@ -8,21 +8,10 @@ Cloud login (`YarboCloudClient`) requires the real key to encrypt the password.
 
 ## How to get the real key
 
-The actual public key is bundled inside the Yarbo Android APK at:
+The actual public key can be obtained from the Yarbo app package and placed at:
 
 ```
-assets/rsa_key/rsa_public_key.pem
-```
-
-### Extract from APK
-
-```bash
-# 1. Download the Yarbo APK (from Google Play via apkpure or your device)
-# 2. Unzip it (APKs are ZIP archives)
-unzip yarbo.apk -d yarbo_unpacked
-
-# 3. Copy the key
-cp yarbo_unpacked/assets/rsa_key/rsa_public_key.pem /path/to/python-yarbo/src/yarbo/keys/
+src/yarbo/keys/rsa_public_key.pem
 ```
 
 ### Supply at runtime (alternative)

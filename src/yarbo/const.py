@@ -4,10 +4,9 @@ yarbo.const — Protocol constants for the Yarbo MQTT interface.
 All topic templates, port numbers, and default values used by the
 local and cloud MQTT transports.
 
-Discovery sources:
-- Blutter ASM analysis of the Flutter app (libapp.so)
-- Live packet captures on the local EMQX broker at 192.168.1.24 / 192.168.1.55
-- yarbo-reversing/docs/COMMAND_CATALOGUE.md
+Protocol sources:
+- Protocol observations on the local EMQX broker (use discover() for broker IP)
+- Protocol documentation (command catalogue)
 
 Transport support matrix
 ------------------------
@@ -29,11 +28,11 @@ from __future__ import annotations
 # Local broker (same WiFi as robot)
 # ---------------------------------------------------------------------------
 
-#: Default local EMQX broker address (Yarbo's embedded broker, HaLow network).
-LOCAL_BROKER_DEFAULT = "192.168.1.24"
+#: Default local EMQX broker address. Empty = no default; use discover() or set explicitly.
+LOCAL_BROKER_DEFAULT = ""
 
-#: Secondary local EMQX broker IP (also observed in the wild on HaLow networks).
-LOCAL_BROKER_SECONDARY = "192.168.1.55"
+#: Reserved for discovery candidate list (unused; discovery uses subnet scan only).
+LOCAL_BROKER_SECONDARY = ""
 
 #: Local broker plaintext port.
 LOCAL_PORT = 1883
@@ -82,11 +81,11 @@ TOPIC_LEAF_DEVICE_INFO = "deviceinfo_feedback"
 TOPIC_LEAF_LOG_FEEDBACK = "log_feedback"
 TOPIC_LEAF_A_PROPERTY_1 = "a_property_1_feedback"
 
-# Live-confirmed telemetry leaves (zlib JSON ~1-2 Hz)
+# Observed telemetry leaves (zlib JSON ~1-2 Hz)
 TOPIC_LEAF_DEVICE_MSG = "DeviceMSG"
 """Full telemetry payload: BatteryMSG, StateMSG, RTKMSG, CombinedOdom, etc."""
 
-# Live-confirmed heartbeat leaf (plain JSON ~1 Hz)
+# Observed heartbeat leaf (plain JSON ~1 Hz)
 TOPIC_LEAF_HEART_BEAT = "heart_beat"
 """Heartbeat: plain JSON ``{"working_state": 0|1}``.
 NOTE: ``heart_beat`` is NOT zlib-compressed — the codec's plain-JSON

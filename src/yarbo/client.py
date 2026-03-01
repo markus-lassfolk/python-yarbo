@@ -7,21 +7,21 @@ that require it (robot binding, account management, etc.).
 
 Usage::
 
-    # Async context manager
-    async with YarboClient(broker="192.168.1.24", sn="24400102L8HO5227") as client:
+    # Async context manager (broker from discover() or your rover/DC IP)
+    async with YarboClient(broker="<rover-ip>", sn="YOUR_SERIAL") as client:
         status = await client.get_status()
         await client.lights_on()
         async for telemetry in client.watch_telemetry():
             print(f"Battery: {telemetry.battery}%")
 
     # Sync wrapper
-    client = YarboClient.connect(broker="192.168.1.24", sn="24400102L8HO5227")
+    client = YarboClient.connect(broker="<rover-ip>", sn="YOUR_SERIAL")
     client.lights_on()
     client.disconnect()
 
-    # Auto-discovery
+    # Auto-discovery (pass subnet if needed: discover_yarbo(subnet="192.0.2.0/24"))
     from yarbo import discover_yarbo
-    robots = await discover_yarbo()
+    robots = await discover_yarbo(subnet="192.0.2.0/24")
     if robots:
         async with YarboClient(broker=robots[0].broker_host, sn=robots[0].sn) as client:
             await client.lights_on()
@@ -33,7 +33,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from .cloud import YarboCloudClient
-from .const import LOCAL_BROKER_DEFAULT, LOCAL_PORT
+from .const import LOCAL_PORT
 from .local import YarboLocalClient, _SyncYarboLocalClient
 
 if TYPE_CHECKING:
@@ -77,7 +77,7 @@ class YarboClient:
     :class:`~yarbo.local.YarboLocalClient`.
 
     Args:
-        broker:    Local MQTT broker IP address.
+        broker:    Local MQTT broker IP (from discover() or set explicitly; required).
         sn:        Robot serial number.
         port:      MQTT broker port (default 1883).
         username:  Cloud account email (optional — for cloud REST features only).
@@ -88,7 +88,7 @@ class YarboClient:
 
     def __init__(
         self,
-        broker: str = LOCAL_BROKER_DEFAULT,
+        broker: str,
         sn: str = "",
         port: int = LOCAL_PORT,
         username: str = "",
@@ -386,16 +386,6 @@ class YarboClient:
         """Request the product code and await the data_feedback response."""
         return await self._local.get_product_code(timeout)
 
-    # -- Blade / mowing configuration --
-
-    async def set_blade_height(self, height: int) -> None:
-        """Set the blade cutting height."""
-        await self._local.set_blade_height(height)
-
-    async def set_blade_speed(self, speed: int) -> None:
-        """Set the blade rotation speed."""
-        await self._local.set_blade_speed(speed)
-
     async def set_charge_limit(self, min_pct: int, max_pct: int) -> None:
         """Set battery charge limits."""
         await self._local.set_charge_limit(min_pct, max_pct)
@@ -403,20 +393,6 @@ class YarboClient:
     async def set_turn_type(self, turn_type: int) -> None:
         """Set the turning behaviour type."""
         await self._local.set_turn_type(turn_type)
-
-    # -- Snow blower accessories --
-
-    async def push_snow_dir(self, direction: int) -> None:
-        """Set the snow push direction."""
-        await self._local.push_snow_dir(direction)
-
-    async def set_chute_steering_work(self, angle: int) -> None:
-        """Set the chute steering angle during work."""
-        await self._local.set_chute_steering_work(angle)
-
-    async def set_roller_speed(self, speed: int) -> None:
-        """Set the roller/blower speed."""
-        await self._local.set_roller_speed(speed)
 
     # -- Motor & mechanical --
 
@@ -641,6 +617,74 @@ class YarboClient:
         return self._local.is_healthy(max_age_seconds=max_age_seconds)
 
     # ------------------------------------------------------------------
+    # Head-specific commands (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def set_roller_speed(self, speed: int) -> None:
+        """Set roller speed (leaf blower head only)."""
+        return await self._local.set_roller_speed(speed=speed)
+
+    async def set_blade_height(self, height: int) -> None:
+        """Set blade height (lawn mower / lawn mower pro head only)."""
+        return await self._local.set_blade_height(height=height)
+
+    async def set_blade_speed(self, speed: int) -> None:
+        """Set blade speed (lawn mower / lawn mower pro head only)."""
+        return await self._local.set_blade_speed(speed=speed)
+
+    async def push_snow_dir(self, direction: int) -> None:
+        """Set snow push direction (snow blower head only)."""
+        return await self._local.push_snow_dir(direction=direction)
+
+    async def set_chute_steering_work(self, state: int) -> None:
+        """Enable or disable chute auto-steering (snow blower head only)."""
+        return await self._local.set_chute_steering_work(state=state)
+
+    # ------------------------------------------------------------------
+    # Camera commands (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def check_camera_status(self) -> YarboCommandResult:
+        """Request current camera status."""
+        return await self._local.check_camera_status()
+
+    async def camera_calibration(self) -> YarboCommandResult:
+        """Trigger camera calibration."""
+        return await self._local.camera_calibration()
+
+    # ------------------------------------------------------------------
+    # Firmware update commands (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def firmware_update_now(self, *, confirm: bool = False) -> YarboCommandResult:
+        """Trigger an immediate firmware update (destructive — pass confirm=True)."""
+        return await self._local.firmware_update_now(confirm=confirm)
+
+    async def firmware_update_tonight(self) -> YarboCommandResult:
+        """Schedule a firmware update for tonight."""
+        return await self._local.firmware_update_tonight()
+
+    async def firmware_update_later(self) -> YarboCommandResult:
+        """Defer a pending firmware update."""
+        return await self._local.firmware_update_later()
+
+    # ------------------------------------------------------------------
+    # Wi-Fi management (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def get_saved_wifi_list(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Fetch saved Wi-Fi networks from the robot."""
+        return await self._local.get_saved_wifi_list(timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Recording (delegated to YarboLocalClient)
+    # ------------------------------------------------------------------
+
+    async def bag_record(self, enabled: bool) -> None:
+        """Start or stop bag recording."""
+        return await self._local.bag_record(enabled=enabled)
+
+    # ------------------------------------------------------------------
     # Cloud features (lazy-initialised)
     # ------------------------------------------------------------------
 
@@ -676,7 +720,7 @@ class YarboClient:
     @classmethod
     def connect_sync(
         cls,
-        broker: str = LOCAL_BROKER_DEFAULT,
+        broker: str,
         sn: str = "",
         port: int = LOCAL_PORT,
     ) -> _SyncYarboLocalClient:
@@ -688,7 +732,7 @@ class YarboClient:
 
         Example::
 
-            client = YarboClient.connect_sync(broker="192.168.1.24", sn="24400102...")
+            client = YarboClient.connect_sync(broker="<rover-ip>", sn="YOUR_SERIAL")
             client.lights_on()
             client.disconnect()
         """

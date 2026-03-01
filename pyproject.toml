@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "python-yarbo"
-version = "0.1.1"
-description = "Python library for local control of Yarbo robot mowers and snow blowers via MQTT"
+version = "2026.3.10"
+description = "Python library for local and cloud control of Yarbo robot mowers via MQTT"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Markus Lassfolk" }]
@@ -47,13 +47,16 @@ dev = [
     "types-aiofiles",
 ]
 
+[project.scripts]
+yarbo = "yarbo._cli:main"
+
 [project.urls]
 Homepage = "https://github.com/markus-lassfolk/python-yarbo"
 Repository = "https://github.com/markus-lassfolk/python-yarbo"
 "Bug Tracker" = "https://github.com/markus-lassfolk/python-yarbo/issues"
 Documentation = "https://github.com/markus-lassfolk/python-yarbo#readme"
 Changelog = "https://github.com/markus-lassfolk/python-yarbo/blob/main/CHANGELOG.md"
-"yarbo-reversing" = "https://github.com/markus-lassfolk/yarbo-reversing"
+"Protocol Documentation" = "https://github.com/markus-lassfolk/python-yarbo/blob/main/docs/index.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/yarbo"]

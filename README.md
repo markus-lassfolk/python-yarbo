@@ -5,11 +5,12 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/python-yarbo.svg)](https://pypi.org/project/python-yarbo/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Python library for **local control** of [Yarbo](https://yarbo.com/) robot
-mowers and snow blowers via MQTT.
+Python library for **local MQTT control** of [Yarbo](https://yarbo.com/) robot
+mowers and snow blowers — a community-developed project.
 
-> **Status**: Alpha (0.1.0) — local MQTT control is functional and confirmed working
-> on hardware.
+> **Status**: 2026.3.10 — **Local control only.** Cloud integration modules are included
+> but experimental and not fully tested. Do not rely on cloud features in production.
+> Cloud support will be validated in a future release.
 
 ## Features
 
@@ -26,7 +27,7 @@ mowers and snow blowers via MQTT.
 ## Requirements
 
 - Python ≥ 3.11
-- Same WiFi network as the robot (for local control)
+- Same network as the robot (for local control). Relies on broadcast messages for auto-discovery. 
 - `paho-mqtt` ≥ 2.0 (included)
 - `aiohttp` ≥ 3.9 (included)
 
@@ -51,7 +52,7 @@ import asyncio
 from yarbo import YarboClient
 
 async def main():
-    async with YarboClient(broker="192.168.1.24", sn="24400102L8HO5227") as client:
+    async with YarboClient(broker="<rover-ip>", sn="YOUR_SERIAL") as client:
         # Get a telemetry snapshot
         status = await client.get_status()
         if status:
@@ -80,7 +81,7 @@ asyncio.run(main())
 ```python
 from yarbo import YarboClient
 
-client = YarboClient.connect_sync(broker="192.168.1.24", sn="24400102L8HO5227")
+client = YarboClient.connect_sync(broker="<rover-ip>", sn="YOUR_SERIAL")
 client.lights_on()
 client.buzzer()
 client.disconnect()
@@ -94,7 +95,7 @@ from yarbo import discover_yarbo, YarboClient
 
 async def main():
     print("Scanning for Yarbo robots...")
-    robots = await discover_yarbo()
+    robots = await discover_yarbo()  # scans host's local networks; or pass subnet="192.0.2.0/24"
 
     if not robots:
         print("No robots found")
@@ -117,7 +118,7 @@ async def main():
     async with YarboCloudClient(
         username="your@email.com",
         password="yourpassword",
-        rsa_key_path="/path/to/rsa_public_key.pem",  # from APK
+        rsa_key_path="/path/to/rsa_public_key.pem",  # see keys/README.md
     ) as client:
         robots = await client.list_robots()
         for robot in robots:
@@ -150,7 +151,7 @@ asyncio.run(main())
 
 ### `YarboLocalClient` (MQTT-only)
 
-Same interface as `YarboClient`, local only, no cloud features.
+Same interface as `YarboClient`, local only, no cloud features. Optional constructor args for troubleshooting: **`debug`** / **`debug_raw`** (print every MQTT message to stderr), **`mqtt_log_path`** (append raw messages to a file), **`mqtt_capture_max`** (buffer last N messages for `get_captured_mqtt()` e.g. for GlitchTip reports). See [Debug and troubleshooting](#debug-and-troubleshooting).
 
 ### `YarboLightState`
 
@@ -225,10 +226,10 @@ Recommendations:
 
 ## Protocol Notes
 
-Key protocol facts for local MQTT communication:
+Key protocol facts (community-observed):
 
-- **MQTT broker**: Local EMQX at `192.168.1.24:1883` or `192.168.1.55:1883`
-  (check which IP your robot uses — both have been observed in production)
+- **MQTT broker**: Local EMQX (port 1883). Use `yarbo discover` (scans host networks) or
+  `yarbo discover --subnet <CIDR>` to find Rover/DC endpoints; IPs are DHCP-assigned.
 - **Payload encoding**: `zlib.compress(json.dumps(payload).encode())`
   (exception: `heart_beat` topic uses plain uncompressed JSON)
 - **Controller handshake**: `get_controller` must be sent before action commands
@@ -238,19 +239,73 @@ Key protocol facts for local MQTT communication:
   `BatteryMSG.capacity`, `StateMSG.working_state`, `RTKMSG.heading`,
   `CombinedOdom.x/y/phi`
 - **Not yet implemented**: Local REST API (port 8088) and TCP JSON (port 22220)
-  are documented in `yarbo-reversing` but not implemented here
+  are not yet implemented here
 
-See [`yarbo-reversing`](https://github.com/markus-lassfolk/yarbo-reversing) for:
-- Full [command catalogue](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/COMMAND_CATALOGUE.md)
-- [Light control protocol](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/LIGHT_CTRL_PROTOCOL.md)
-- [API endpoints](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/API_ENDPOINTS.md)
-- [MQTT protocol reference](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/MQTT_PROTOCOL.md)
+## Debug and troubleshooting
+
+The CLI and library support debug logging and sending MQTT dumps to GlitchTip so you can inspect traffic and help maintainers support firmware/configurations they cannot test locally.
+
+### Debug logging (see what’s sent and received)
+
+- **`--debug`** (or **`YARBO_DEBUG=1`** / `true` / `yes`): every MQTT message sent and received is printed to **stderr** in human-readable form (topic + pretty-printed JSON payload).
+- **`--raw`** (or **`YARBO_DEBUG_RAW=1`**): together with debug, each message is printed as a single JSON line (no formatting), e.g. for piping or log files.
+
+Environment variables apply when the flag is not given, so you can leave `YARBO_DEBUG=1` set while developing.
+
+```bash
+# Human-readable on stderr
+yarbo status --broker 192.168.1.1 --sn ABC123 --debug
+
+# Same via env (no need to pass --debug every time)
+YARBO_DEBUG=1 yarbo status --broker 192.168.1.1 --sn ABC123
+
+# Raw one-line JSON per message
+yarbo status --broker 192.168.1.1 --sn ABC123 --debug --raw
+```
+
+From Python you can enable the same behaviour by passing `debug=True` (and optionally `debug_raw=True`) into `YarboLocalClient`:
+
+```python
+from yarbo import YarboLocalClient
+
+client = YarboLocalClient(
+    broker="192.168.1.1", sn="ABC123",
+    debug=True, debug_raw=False,
+)
+await client.connect()
+# ... all MQTT traffic is printed to stderr
+```
+
+### Logging raw MQTT to a file
+
+- **`--log-mqtt FILE`**: appends every raw MQTT message (topic + decoded payload JSON, one JSON object per line) to the given file. Useful for offline comparison or scripting.
+
+```bash
+yarbo status --broker 192.168.1.1 --sn ABC123 --log-mqtt mqtt_log.jsonl
+```
+
+### Sending an MQTT dump to GlitchTip (for support)
+
+When reporting a bug or asking for support for a firmware/head type the maintainers don’t have, you can send a full MQTT dump so they can see exactly what the robot sends and receives.
+
+- **`--report-mqtt`**: for that command run, up to 1000 MQTT messages are captured; at the end of the run they are sent to GlitchTip (Sentry) as an info-level event. Sensitive keys (e.g. password, token) in payloads are redacted before send.
+
+**Requirements:** GlitchTip/Sentry must be enabled (e.g. `YARBO_SENTRY_DSN` or `SENTRY_DSN` set). If the DSN is not set, the flag is ignored and no data is sent.
+
+```bash
+# Capture status command traffic and send dump to GlitchTip
+yarbo status --broker 192.168.1.1 --sn ABC123 --report-mqtt
+```
+
+From Python you can capture and send a dump yourself using `report_mqtt_dump_to_glitchtip` from `yarbo.error_reporting`, and `client.get_captured_mqtt()` when the client was created with `mqtt_capture_max > 0` (see `YarboLocalClient` and `MqttTransport` parameters).
+
+See [protocol documentation](docs/index.md) for additional protocol details.
 
 ## Related Projects
 
 | Project | Description |
 |---------|-------------|
-| [`yarbo-reversing`](https://github.com/markus-lassfolk/yarbo-reversing) | Protocol RE: Frida scripts, MITM setup, APK tools |
+| [`home-assistant-yarbo`](https://github.com/markus-lassfolk/home-assistant-yarbo) | Home Assistant integration (coming soon) |
 | [`PSYarbo`](https://github.com/markus-lassfolk/PSYarbo) | PowerShell module (same protocol, same architecture) |
 
 ## License
@@ -259,5 +314,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Disclaimer
 
-This is a community project. It is not affiliated with or endorsed by
-Yarbo. Use at your own risk. Do not expose your robot's MQTT broker to the internet.
+This is a community project, not affiliated with or endorsed by Yarbo. Use at your own risk. Do not expose your robot's MQTT broker to the internet.

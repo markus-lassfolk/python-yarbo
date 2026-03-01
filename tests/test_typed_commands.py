@@ -448,7 +448,6 @@ class TestDataFeedbackTimeout:
         assert result == {}
 
 
-
 # ===========================================================================
 # Tests: YarboLocalClient — new typed commands (Task B)
 # ===========================================================================
@@ -608,9 +607,7 @@ class TestDestructiveMapCommands:
 
     async def test_map_recovery_with_confirm(self, client, mock_transport):
         await client.map_recovery("backup-id-123", confirm=True)
-        mock_transport.publish.assert_called_once_with(
-            "map_recovery", {"mapId": "backup-id-123"}
-        )
+        mock_transport.publish.assert_called_once_with("map_recovery", {"mapId": "backup-id-123"})
 
     async def test_save_current_map(self, client, mock_transport):
         await client.save_current_map()

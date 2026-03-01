@@ -6,12 +6,11 @@ The Yarbo backend uses Auth0 JWTs (RS256) issued by
 before transmission (despite OAEP references in the Dart code — confirmed by
 live testing that PKCS1v15 is the actual padding used).
 
-The RSA public key is bundled in the Yarbo app APK at:
+The RSA public key can be obtained from the Yarbo app and placed at:
     ``assets/rsa_key/rsa_public_key.pem``
 
 References:
-    yarbo-reversing/yarbo/auth.py — original synchronous implementation
-    yarbo-reversing/docs/API_ENDPOINTS.md — endpoint documentation
+    Protocol documentation (API endpoint reference)
 """
 
 from __future__ import annotations
@@ -45,7 +44,7 @@ class YarboAuth:
         base_url:     REST API gateway base URL.
         username:     User email address.
         password:     Plaintext password (encrypted before transmission).
-        rsa_key_path: Path to the RSA public key PEM extracted from the APK.
+        rsa_key_path: Path to the RSA public key PEM.
                       If not provided, falls back to the vendored key in the
                       package (if available).
         session:      Existing ``aiohttp.ClientSession`` to reuse.
@@ -83,7 +82,7 @@ class YarboAuth:
         .. warning::
             The vendored key at ``src/yarbo/keys/rsa_public_key.pem`` is a
             **placeholder** — cloud auth will fail until it is replaced with
-            the real key extracted from the Yarbo APK.
+            the real key (see keys/README.md for instructions).
 
             See ``src/yarbo/keys/README.md`` for extraction instructions, or
             supply the real key path via ``rsa_key_path`` at construction time.
@@ -134,8 +133,8 @@ class YarboAuth:
             return
         try:
             await self._post(_LOGOUT_PATH, {})
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Logout request failed (token cleared locally): %s", exc)
         finally:
             self.access_token = ""
             self.refresh_token = ""
@@ -181,7 +180,7 @@ class YarboAuth:
             except FileNotFoundError as exc:
                 raise YarboAuthError(
                     f"RSA public key not found at {self._key_path}. "
-                    "Extract it from the Yarbo APK: assets/rsa_key/rsa_public_key.pem"
+                    "Obtain the key and place it at: assets/rsa_key/rsa_public_key.pem"
                 ) from exc
             except ImportError as exc:
                 raise YarboAuthError(
@@ -211,9 +210,21 @@ class YarboAuth:
         self.expires_at = time.time() + expires_in
         self.sn_list = data.get("snList", [])
 
+    async def close(self) -> None:
+        """Close the internal HTTP session if we own it."""
+        if self._owns_session and self._session and not self._session.closed:
+            await self._session.close()
+
+    async def __aenter__(self) -> YarboAuth:
+        return self
+
+    async def __aexit__(self, *exc: object) -> None:
+        await self.close()
+
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession()
+            self._owns_session = True
         return self._session
 
     async def _post(
