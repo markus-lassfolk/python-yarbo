@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import sys
 from unittest.mock import MagicMock
 
@@ -125,6 +126,7 @@ class TestScrubMqttEnvelope:
 class TestReportMqttDumpToGlitchtip:
     def test_returns_false_when_sentry_not_initialized(self, monkeypatch):
         """When Sentry is not initialized, report_mqtt_dump_to_glitchtip returns False."""
+        pytest.importorskip("sentry_sdk")
         monkeypatch.setattr("sentry_sdk.is_initialized", lambda: False)
         result = report_mqtt_dump_to_glitchtip([{"direction": "sent", "topic": "t", "payload": {}}])
         assert result is False

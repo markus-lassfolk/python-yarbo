@@ -561,14 +561,10 @@ class TestMqttTlsSecurity:
             connect_task = asyncio.create_task(transport.connect())
             await asyncio.sleep(0)  # let connect() run up to wait_for(_connected)
 
-            # tls_set must have been called before loop_start/wait_for
-            mock_paho.tls_set.assert_called_once()
-            call_kwargs = mock_paho.tls_set.call_args[1]
-            assert call_kwargs.get("ssl_context") is mock_ctx, (
-                "Expected ssl_context=create_default_context() when tls_ca_certs is None"
-            )
-            # CERT_NONE must never appear
-            assert call_kwargs.get("cert_reqs") != ssl.CERT_NONE
+            # tls_set_context must have been called with the default context
+            mock_paho.tls_set_context.assert_called_once_with(mock_ctx)
+            # tls_set must NOT have been called (no CA = context path)
+            mock_paho.tls_set.assert_not_called()
             mock_create.assert_called_once_with()
 
         # Clean up the pending connect task
@@ -604,7 +600,9 @@ class TestMqttTlsSecurity:
             connect_task = asyncio.create_task(transport.connect())
             await asyncio.sleep(0)
 
-        for call in mock_paho.tls_set.call_args_list:
+        # Check both tls_set and tls_set_context calls
+        all_calls = list(mock_paho.tls_set.call_args_list) + list(mock_paho.tls_set_context.call_args_list)
+        for call in all_calls:
             args, kwargs = call
             assert ssl.CERT_NONE not in args, "CERT_NONE must not appear in positional args"
             assert kwargs.get("cert_reqs") != ssl.CERT_NONE, (
