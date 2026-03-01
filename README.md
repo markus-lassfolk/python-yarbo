@@ -5,11 +5,12 @@
 [![Python versions](https://img.shields.io/pypi/pyversions/python-yarbo.svg)](https://pypi.org/project/python-yarbo/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Python library for **local and cloud control** of [Yarbo](https://yarbo.com/) robot
+Python library for **local MQTT control** of [Yarbo](https://yarbo.com/) robot
 mowers and snow blowers — a community-developed project.
 
-> **Status**: Alpha (0.1.0) — local MQTT control is functional and confirmed working
-> on hardware. Cloud API is partially functional (JWT auth migration in progress).
+> **Status**: 2026.3.10 — **Local control only.** Cloud integration modules are included
+> but experimental and not fully tested. Do not rely on cloud features in production.
+> Cloud support will be validated in a future release.
 
 ## Features
 
