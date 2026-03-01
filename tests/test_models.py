@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 
 from yarbo.models import (
+    STRUCTURED_MQTT_KEYS,
     HeadType,
     TelemetryEnvelope,
     YarboCommandResult,
@@ -14,6 +15,7 @@ from yarbo.models import (
     YarboSchedule,
     YarboTelemetry,
     _parse_gngga,
+    flatten_mqtt_payload,
 )
 
 
@@ -193,6 +195,17 @@ class TestYarboTelemetry:
         """machine_controller=1 in the live fixture is parsed correctly."""
         t = YarboTelemetry.from_dict(sample_telemetry_dict)
         assert t.machine_controller == 1
+
+    def test_battery_temp_err_in_fixture(self, sample_telemetry_dict):
+        """BatteryMSG.temp_err is parsed into battery_temp_err (0 = OK)."""
+        t = YarboTelemetry.from_dict(sample_telemetry_dict)
+        assert t.battery_temp_err == 0
+
+    def test_device_msg_fixture_no_missing_structured_keys(self, sample_telemetry_dict):
+        """Every key in the live fixture is represented in the structured status table."""
+        flat = flatten_mqtt_payload(sample_telemetry_dict)
+        missing = set(flat.keys()) - STRUCTURED_MQTT_KEYS
+        assert not missing, f"Fixture keys missing from structured table: {sorted(missing)}"
 
 
 class TestYarboTelemetryAliases:

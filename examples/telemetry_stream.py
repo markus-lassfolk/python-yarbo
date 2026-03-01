@@ -3,8 +3,8 @@
 telemetry_stream.py — Stream live telemetry from a Yarbo robot.
 
 Usage:
-    python examples/telemetry_stream.py --broker 192.168.1.24 --sn 24400102L8HO5227
-    python examples/telemetry_stream.py --broker 192.168.1.24 --sn ... --count 10
+    python examples/telemetry_stream.py --broker <rover-ip> --sn YOUR_SERIAL
+    python examples/telemetry_stream.py --broker <rover-ip> --sn ... --count 10
 """
 
 from __future__ import annotations
@@ -43,7 +43,7 @@ async def main(broker: str, sn: str, count: int) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Stream Yarbo telemetry")
-    ap.add_argument("--broker", default="192.168.1.24", help="MQTT broker IP")
+    ap.add_argument("--broker", required=True, help="MQTT broker IP (required; use yarbo discover to find)")
     ap.add_argument("--sn", required=True, help="Robot serial number")
     ap.add_argument("--count", type=int, default=20, help="Number of messages to receive")
     args = ap.parse_args()

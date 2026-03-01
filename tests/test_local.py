@@ -53,38 +53,38 @@ def mock_transport():
 @pytest.mark.asyncio
 class TestYarboLocalClientConnect:
     async def test_connect_calls_transport(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         mock_transport.connect.assert_called_once()
 
     async def test_disconnect_calls_transport(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         await client.disconnect()
         mock_transport.disconnect.assert_called_once()
 
     async def test_context_manager(self, mock_transport):
-        async with YarboLocalClient(broker="192.168.1.24", sn="TEST123") as client:
+        async with YarboLocalClient(broker="192.0.2.1", sn="TEST123") as client:
             assert client.is_connected
 
     async def test_is_connected(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         assert client.is_connected is True
 
     async def test_serial_number(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="24400102L8HO5227")
+        client = YarboLocalClient(broker="192.0.2.1", sn="24400102L8HO5227")
         assert client.serial_number == "24400102L8HO5227"
 
     async def test_controller_acquired_default_false(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         assert client.controller_acquired is False
 
     async def test_controller_acquired_after_handshake(self, mock_transport):
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "get_controller", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123", auto_controller=False)
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123", auto_controller=False)
         await client.connect()
         await client.get_controller()
         assert client.controller_acquired is True
@@ -93,7 +93,7 @@ class TestYarboLocalClientConnect:
 @pytest.mark.asyncio
 class TestYarboLocalClientLights:
     async def test_lights_on_publishes(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True  # skip handshake
         await client.lights_on()
@@ -105,7 +105,7 @@ class TestYarboLocalClientLights:
         assert payload["body_left_r"] == 255
 
     async def test_lights_off_publishes(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.lights_off()
@@ -114,7 +114,7 @@ class TestYarboLocalClientLights:
         assert all(v == 0 for v in payload.values())
 
     async def test_set_lights_uses_state(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         state = YarboLightState(led_head=100, body_left_r=50)
@@ -127,7 +127,7 @@ class TestYarboLocalClientLights:
 @pytest.mark.asyncio
 class TestYarboLocalClientBuzzer:
     async def test_buzzer_on(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.buzzer(state=1)
@@ -137,7 +137,7 @@ class TestYarboLocalClientBuzzer:
         assert "timeStamp" in call_args[0][1]
 
     async def test_buzzer_off(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.buzzer(state=0)
@@ -148,7 +148,7 @@ class TestYarboLocalClientBuzzer:
 @pytest.mark.asyncio
 class TestYarboLocalClientChute:
     async def test_set_chute(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.set_chute(vel=90)
@@ -165,7 +165,7 @@ class TestYarboLocalClientController:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "get_controller", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123", auto_controller=True)
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123", auto_controller=True)
         await client.connect()
         assert client._controller_acquired is False
         await client.lights_on()
@@ -176,7 +176,7 @@ class TestYarboLocalClientController:
 
     async def test_auto_controller_only_once(self, mock_transport):
         """get_controller is not sent again if already acquired."""
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.lights_on()
@@ -189,7 +189,7 @@ class TestYarboLocalClientController:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "get_controller", "state": 1, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123", auto_controller=False)
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123", auto_controller=False)
         await client.connect()
         with pytest.raises(YarboNotControllerError):
             await client.get_controller()
@@ -201,7 +201,7 @@ class TestYarboLocalClientController:
         the handshake, so we cannot assume control was granted.
         """
         mock_transport.wait_for_message = AsyncMock(return_value=None)
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123", auto_controller=False)
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123", auto_controller=False)
         await client.connect()
         with pytest.raises(YarboTimeoutError):
             await client.get_controller()
@@ -218,7 +218,7 @@ class TestYarboLocalClientTelemetry:
                 "payload": {"BatteryMSG": {"capacity": 50}},
             }
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         result = await client.get_status(timeout=1.0)
         assert result is not None
@@ -226,7 +226,7 @@ class TestYarboLocalClientTelemetry:
         assert result.sn == "SN42"
 
     async def test_watch_telemetry_yields(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         items = []
         async for t in client.watch_telemetry():
@@ -262,7 +262,7 @@ class TestYarboLocalClientTelemetry:
             instance.telemetry_stream = fake_stream
             MockT.return_value = instance
 
-            client = YarboLocalClient(broker="192.168.1.24", sn="TEST")
+            client = YarboLocalClient(broker="192.0.2.1", sn="TEST")
             await client.connect()
             items = []
             async for t in client.watch_telemetry():
@@ -288,7 +288,7 @@ class TestYarboLocalClientPlanManagement:
         mock_transport.wait_for_message = AsyncMock(
             return_value=self._success_response("start_plan")
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.start_plan("plan-uuid-1")
@@ -303,7 +303,7 @@ class TestYarboLocalClientPlanManagement:
         mock_transport.wait_for_message = AsyncMock(
             return_value=self._success_response("stop_plan")
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.stop_plan()
@@ -315,7 +315,7 @@ class TestYarboLocalClientPlanManagement:
         mock_transport.wait_for_message = AsyncMock(
             return_value=self._success_response("pause_plan")
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.pause_plan()
@@ -325,7 +325,7 @@ class TestYarboLocalClientPlanManagement:
         mock_transport.wait_for_message = AsyncMock(
             return_value=self._success_response("resume_plan")
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.resume_plan()
@@ -335,7 +335,7 @@ class TestYarboLocalClientPlanManagement:
         mock_transport.wait_for_message = AsyncMock(
             return_value=self._success_response("cmd_recharge")
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.return_to_dock()
@@ -345,7 +345,7 @@ class TestYarboLocalClientPlanManagement:
 
     async def test_plan_timeout_raises(self, mock_transport):
         mock_transport.wait_for_message = AsyncMock(return_value=None)
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         with pytest.raises(YarboTimeoutError):
@@ -359,7 +359,7 @@ class TestYarboLocalClientScheduleManagement:
     async def test_list_schedules_empty(self, mock_transport):
         """list_schedules returns empty list on timeout."""
         mock_transport.wait_for_message = AsyncMock(return_value=None)
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         result = await client.list_schedules(timeout=0.1)
         assert result == []
@@ -376,7 +376,7 @@ class TestYarboLocalClientScheduleManagement:
                 "data": {"scheduleList": schedules_data},
             }
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         result = await client.list_schedules()
         assert len(result) == 2
@@ -388,7 +388,7 @@ class TestYarboLocalClientScheduleManagement:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "save_schedule", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         sched = YarboSchedule(
@@ -407,7 +407,7 @@ class TestYarboLocalClientScheduleManagement:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "del_schedule", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.delete_schedule("sched-id-1")
@@ -423,7 +423,7 @@ class TestYarboLocalClientPlanCRUD:
 
     async def test_list_plans_empty_on_timeout(self, mock_transport):
         mock_transport.wait_for_message = AsyncMock(return_value=None)
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         result = await client.list_plans(timeout=0.1)
         assert result == []
@@ -440,7 +440,7 @@ class TestYarboLocalClientPlanCRUD:
                 "data": {"planList": plans_data},
             }
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         result = await client.list_plans()
         assert len(result) == 2
@@ -452,7 +452,7 @@ class TestYarboLocalClientPlanCRUD:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "del_plan", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.delete_plan("plan-id-1")
@@ -467,7 +467,7 @@ class TestYarboLocalClientManualDrive:
     """Tests for manual drive command set."""
 
     async def test_start_manual_drive_publishes_set_working_state(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.start_manual_drive()
@@ -476,7 +476,7 @@ class TestYarboLocalClientManualDrive:
         assert call_args[0][1] == {"state": "manual"}
 
     async def test_set_velocity_publishes_cmd_vel(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.set_velocity(linear=0.5, angular=0.1)
@@ -485,7 +485,7 @@ class TestYarboLocalClientManualDrive:
         assert call_args[0][1] == {"vel": 0.5, "rev": 0.1}
 
     async def test_set_velocity_default_angular(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.set_velocity(linear=1.0)
@@ -494,7 +494,7 @@ class TestYarboLocalClientManualDrive:
         assert payload["rev"] == pytest.approx(0.0)
 
     async def test_set_roller_publishes_cmd_roller(self, mock_transport):
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.set_roller(speed=1500)
@@ -506,7 +506,7 @@ class TestYarboLocalClientManualDrive:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "dstop", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.stop_manual_drive()
@@ -518,7 +518,7 @@ class TestYarboLocalClientManualDrive:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "dstopp", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.stop_manual_drive(hard=True)
@@ -530,7 +530,7 @@ class TestYarboLocalClientManualDrive:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "emergency_stop_active", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.stop_manual_drive(emergency=True)
@@ -551,7 +551,7 @@ class TestYarboLocalClientGlobalParams:
                 "data": {"speed": 0.8, "perimeterLaps": 2},
             }
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         result = await client.get_global_params()
         assert result["speed"] == pytest.approx(0.8)
@@ -561,7 +561,7 @@ class TestYarboLocalClientGlobalParams:
 
     async def test_get_global_params_empty_on_timeout(self, mock_transport):
         mock_transport.wait_for_message = AsyncMock(return_value=None)
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         result = await client.get_global_params(timeout=0.1)
         assert result == {}
@@ -570,7 +570,7 @@ class TestYarboLocalClientGlobalParams:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "cmd_save_para", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         params = {"speed": 0.6, "perimeterLaps": 3}
@@ -593,7 +593,7 @@ class TestYarboLocalClientMap:
                 "data": {"areas": [{"id": "a1"}], "pathways": []},
             }
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         result = await client.get_map()
         assert "areas" in result
@@ -603,7 +603,7 @@ class TestYarboLocalClientMap:
 
     async def test_get_map_empty_on_timeout(self, mock_transport):
         mock_transport.wait_for_message = AsyncMock(return_value=None)
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         result = await client.get_map(timeout=0.1)
         assert result == {}
@@ -615,34 +615,34 @@ class TestYarboLocalClientHealth:
 
     async def test_last_heartbeat_none_when_not_received(self, mock_transport):
         mock_transport.last_heartbeat = None
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         assert client.last_heartbeat is None
 
     async def test_last_heartbeat_returns_datetime(self, mock_transport):
         mock_transport.last_heartbeat = time.time()
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         assert isinstance(client.last_heartbeat, datetime)
 
     async def test_is_healthy_false_when_no_heartbeat(self, mock_transport):
         mock_transport.last_heartbeat = None
         mock_transport.is_connected = True
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         assert client.is_healthy() is False
 
     async def test_is_healthy_true_when_recent_heartbeat(self, mock_transport):
         mock_transport.last_heartbeat = time.time()
         mock_transport.is_connected = True
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         assert client.is_healthy(max_age_seconds=60.0) is True
 
     async def test_is_healthy_false_when_stale_heartbeat(self, mock_transport):
         mock_transport.last_heartbeat = time.time() - 120.0
         mock_transport.is_connected = True
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         assert client.is_healthy(max_age_seconds=60.0) is False
 
@@ -655,7 +655,7 @@ class TestYarboLocalClientCreatePlan:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "save_plan", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         result = await client.create_plan(name="Front Yard", area_ids=[1, 2, 3])
@@ -670,7 +670,7 @@ class TestYarboLocalClientCreatePlan:
         mock_transport.wait_for_message = AsyncMock(
             return_value={"topic": "save_plan", "state": 0, "data": {}}
         )
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         await client.create_plan(name="Ordered Plan", area_ids=[5], enable_self_order=True)
@@ -680,7 +680,7 @@ class TestYarboLocalClientCreatePlan:
 
     async def test_create_plan_timeout_raises(self, mock_transport):
         mock_transport.wait_for_message = AsyncMock(return_value=None)
-        client = YarboLocalClient(broker="192.168.1.24", sn="TEST123")
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         client._controller_acquired = True
         with pytest.raises(YarboTimeoutError):

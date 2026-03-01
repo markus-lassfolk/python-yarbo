@@ -178,7 +178,7 @@ class TestMqttTransportCallbacks:
         on_connect accepts plain int reason_code (paho v1 style).
         ``getattr(0, 'value', 0)`` → 0, so connection proceeds.
         """
-        transport = MqttTransport(broker="192.168.1.24", sn="ROBOT1")
+        transport = MqttTransport(broker="192.0.2.1", sn="ROBOT1")
         # Simulate the callback method directly
         connected_event = asyncio.Event()
         transport._connected = connected_event
@@ -201,7 +201,7 @@ class TestMqttTransportCallbacks:
         on_connect accepts a ReasonCode-like object with a .value attribute.
         This matches paho v2's actual callback contract.
         """
-        transport = MqttTransport(broker="192.168.1.24", sn="ROBOT1")
+        transport = MqttTransport(broker="192.0.2.1", sn="ROBOT1")
         connected_event = asyncio.Event()
         transport._connected = connected_event
 
@@ -221,7 +221,7 @@ class TestMqttTransportCallbacks:
 
     async def test_on_connect_subscribes_all_leaves(self):
         """on_connect subscribes to ALL_FEEDBACK_LEAVES."""
-        transport = MqttTransport(broker="192.168.1.24", sn="ROBOT1")
+        transport = MqttTransport(broker="192.0.2.1", sn="ROBOT1")
         transport._connected = asyncio.Event()
         mock_client = MagicMock()
         transport._client = mock_client
@@ -537,7 +537,7 @@ class TestMqttReconnect:
             instance.add_reconnect_callback = MagicMock(side_effect=callbacks.append)
             MockT.return_value = instance
 
-            client = YarboLocalClient(broker="192.168.1.24", sn="TEST")
+            client = YarboLocalClient(broker="192.0.2.1", sn="TEST")
             client._controller_acquired = True
             await client.connect()
 

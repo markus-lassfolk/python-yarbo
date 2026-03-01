@@ -22,7 +22,7 @@ import asyncio
 from yarbo import YarboClient
 
 async def main():
-    async with YarboClient(broker="192.168.1.24", sn="YOUR_SERIAL") as client:
+    async with YarboClient(broker="<rover-ip>", sn="YOUR_SERIAL") as client:
         await client.lights_on()
         status = await client.get_status()
         print(f"Battery: {status.battery}%")

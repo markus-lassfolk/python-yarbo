@@ -23,8 +23,13 @@ References:
 from __future__ import annotations
 
 import asyncio
+import collections
 import copy
+import json
 import logging
+from pathlib import Path
+import sys
+import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
 
@@ -70,7 +75,7 @@ class MqttTransport:
 
     Example::
 
-        transport = MqttTransport(broker="192.168.1.24", sn="24400102L8HO5227")
+        transport = MqttTransport(broker="<rover-ip>", sn="YOUR_SERIAL")
         await transport.connect()
         await transport.publish("get_controller", {})
         await transport.publish("light_ctrl", {"led_head": 255, "led_left_w": 255})
@@ -79,6 +84,10 @@ class MqttTransport:
                 t = envelope.to_telemetry()
                 print(t.battery)
         await transport.disconnect()
+
+    Debug / capture (constructor): ``debug`` / ``debug_raw`` print every message to stderr;
+    ``mqtt_capture_max`` > 0 keeps the last N messages; use :meth:`get_captured_mqtt` to
+    retrieve them (e.g. for ``report_mqtt_dump_to_glitchtip``).
     """
 
     def __init__(
@@ -92,6 +101,10 @@ class MqttTransport:
         qos: int = 0,
         tls: bool = False,
         tls_ca_certs: str | None = None,
+        mqtt_log_path: str | None = None,
+        debug: bool = False,
+        debug_raw: bool = False,
+        mqtt_capture_max: int = 0,
     ) -> None:
         self._broker = broker
         self._sn = sn
@@ -102,6 +115,14 @@ class MqttTransport:
         self._qos = qos
         self._tls = tls
         self._tls_ca_certs = tls_ca_certs
+        self._mqtt_log_path: str | None = mqtt_log_path
+        self._mqtt_log_lock: threading.Lock = threading.Lock()
+        self._debug = debug
+        self._debug_raw = debug_raw
+        self._mqtt_capture_max = mqtt_capture_max
+        self._mqtt_capture: collections.deque[dict[str, Any]] = collections.deque(
+            maxlen=mqtt_capture_max if mqtt_capture_max > 0 else None
+        )
 
         # paho Client — typed via TYPE_CHECKING import to avoid hard dependency
         self._client: _paho.Client | None = None
@@ -244,10 +265,40 @@ class MqttTransport:
         encoded = encode(payload)
         self._client.publish(topic, encoded, qos=effective_qos)  # type: ignore[union-attr]
         logger.debug("→ MQTT [%s] %s", topic, str(payload)[:160])
+        envelope = {"direction": "sent", "topic": topic, "payload": payload}
+        self._maybe_capture(envelope)
+        if self._debug:
+            self._debug_print(envelope, "→")
 
     # ------------------------------------------------------------------
     # Receive
     # ------------------------------------------------------------------
+
+    def _maybe_capture(self, envelope: dict[str, Any]) -> None:
+        """Append to capture buffer if enabled; trim to max size."""
+        if self._mqtt_capture_max <= 0:
+            return
+        with self._mqtt_log_lock:
+            self._mqtt_capture.append(copy.deepcopy(envelope))
+
+    def get_captured_mqtt(self) -> list[dict[str, Any]]:
+        """Return a copy of captured MQTT messages (for GlitchTip report)."""
+        with self._mqtt_log_lock:
+            return copy.deepcopy(list(self._mqtt_capture))
+
+    def _debug_print(self, envelope: dict[str, Any], prefix: str) -> None:
+        """Print one MQTT envelope to stderr (human-readable or raw)."""
+        topic = envelope.get("topic", "")
+        payload = envelope.get("payload", {})
+        with self._mqtt_log_lock:
+            if self._debug_raw:
+                line = json.dumps(
+                    {"direction": envelope.get("direction", "?"), "topic": topic,
+                     "payload": payload}, ensure_ascii=False) + "\n"
+                sys.stderr.write(line)
+            else:
+                sys.stderr.write(f"\n--- MQTT {prefix} ---\ntopic: {topic}\npayload:\n")
+                sys.stderr.write(json.dumps(payload, indent=2, ensure_ascii=False) + "\n")
 
     def release_queue(self, queue: asyncio.Queue[dict[str, Any]]) -> None:
         """
@@ -468,6 +519,28 @@ class MqttTransport:
                 msg.topic,
                 str(payload)[:160],
             )
+            capture_envelope = {
+                "direction": "received",
+                "topic": getattr(msg, "topic", ""),
+                "payload": payload,
+            }
+            self._maybe_capture(capture_envelope)
+            if self._debug:
+                self._debug_print(capture_envelope, "←")
+            # Optional: log every raw MQTT message (topic + payload) for comparison with CLI output.
+            if self._mqtt_log_path:
+                with self._mqtt_log_lock:
+                    try:
+                        with Path(self._mqtt_log_path).open("a", encoding="utf-8") as f:
+                            f.write(
+                                json.dumps(
+                                    {"topic": getattr(msg, "topic", ""), "payload": payload},
+                                    ensure_ascii=False,
+                                )
+                                + "\n"
+                            )
+                    except OSError as e:
+                        logger.warning("Failed to write MQTT log: %s", e)
             # Track heartbeat reception time (float write is atomic in CPython).
             if Topic.leaf(msg.topic) == TOPIC_LEAF_HEART_BEAT:
                 self._last_heartbeat = time.time()
