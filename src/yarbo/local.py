@@ -920,18 +920,33 @@ class YarboLocalClient:
         """
         return await self._request_data_feedback("read_all_plan", {}, timeout)
 
-    async def delete_plan_direct(self, plan_id: int) -> None:
+    async def delete_plan_direct(self, plan_id: int, confirm: bool = False) -> None:
         """
         Delete a plan by numeric ID (direct command, no response).
 
         Args:
             plan_id: Numeric plan ID to delete.
+            confirm: Must be ``True`` to proceed — this is a destructive operation.
+
+        Raises:
+            ValueError: If *confirm* is not ``True``.
         """
+        if not confirm:
+            raise ValueError("delete_plan_direct is destructive — pass confirm=True to proceed.")
         await self._ensure_controller()
         await self._transport.publish("del_plan", {"planId": plan_id})
 
-    async def delete_all_plans(self) -> None:
-        """Delete all stored plans from the robot."""
+    async def delete_all_plans(self, confirm: bool = False) -> None:
+        """Delete all stored plans from the robot.
+
+        Args:
+            confirm: Must be ``True`` to proceed — this is a destructive operation.
+
+        Raises:
+            ValueError: If *confirm* is not ``True``.
+        """
+        if not confirm:
+            raise ValueError("delete_all_plans is destructive — pass confirm=True to proceed.")
         await self._ensure_controller()
         await self._transport.publish("del_all_plan", {})
 
@@ -1220,6 +1235,339 @@ class YarboLocalClient:
         """
         await self._ensure_controller()
         await self._transport.publish(cmd, payload)
+
+
+    async def publish_command(self, cmd: str, payload: dict[str, Any]) -> None:
+        """Alias for :meth:`publish_raw` — publish an arbitrary command to the robot.
+
+        Args:
+            cmd:     Topic leaf (e.g. ``"set_blade_height"``).
+            payload: Dict payload (will be zlib-encoded).
+        """
+        await self.publish_raw(cmd, payload)
+
+    # ------------------------------------------------------------------
+    # Blade / mowing configuration
+    # ------------------------------------------------------------------
+
+    async def set_blade_height(self, height: int) -> None:
+        """Set the blade cutting height.
+
+        Args:
+            height: Blade height value (robot-defined units).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_blade_height", {"height": height})
+
+    async def set_blade_speed(self, speed: int) -> None:
+        """Set the blade rotation speed.
+
+        Args:
+            speed: Blade speed value (robot-defined units).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_blade_speed", {"speed": speed})
+
+    async def set_charge_limit(self, min_pct: int, max_pct: int) -> None:
+        """Set battery charge limits.
+
+        Args:
+            min_pct: Minimum charge percentage before robot returns to dock.
+            max_pct: Maximum charge percentage (charge stops here).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_charge_limit", {"min": min_pct, "max": max_pct})
+
+    async def set_turn_type(self, turn_type: int) -> None:
+        """Set the turning behaviour type.
+
+        Args:
+            turn_type: Integer representing the turn mode (robot-defined).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_turn_type", {"turnType": turn_type})
+
+    # ------------------------------------------------------------------
+    # Snow blower accessories
+    # ------------------------------------------------------------------
+
+    async def push_snow_dir(self, direction: int) -> None:
+        """Set the snow push direction.
+
+        Args:
+            direction: Direction integer (robot-defined).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("push_snow_dir", {"direction": direction})
+
+    async def set_chute_steering_work(self, angle: int) -> None:
+        """Set the chute steering angle during work.
+
+        Args:
+            angle: Steering angle in degrees.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_chute_streeing_work", {"angle": angle})
+
+    async def set_roller_speed(self, speed: int) -> None:
+        """Set the roller/blower speed.
+
+        Args:
+            speed: Speed value (robot-defined units).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_roller", {"speed": speed})
+
+    # ------------------------------------------------------------------
+    # Motor & mechanical
+    # ------------------------------------------------------------------
+
+    async def set_motor_protect(self, state: int) -> None:
+        """Enable or disable motor protection mode.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_motor_protect", {"state": state})
+
+    async def set_trimmer(self, state: int) -> None:
+        """Enable or disable the trimmer.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_trimmer", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Blowing / edge / smart features
+    # ------------------------------------------------------------------
+
+    async def set_edge_blowing(self, state: int) -> None:
+        """Enable or disable edge blowing.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("edge_blowing", {"state": state})
+
+    async def set_smart_blowing(self, state: int) -> None:
+        """Enable or disable smart blowing.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("smart_blowing", {"state": state})
+
+    async def set_heating_film(self, state: int) -> None:
+        """Enable or disable heating film (anti-ice).
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("heating_film_ctrl", {"state": state})
+
+    async def set_module_lock(self, state: int) -> None:
+        """Lock or unlock an accessory module.
+
+        Args:
+            state: 1 to lock, 0 to unlock.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("module_lock_ctl", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Autonomous modes
+    # ------------------------------------------------------------------
+
+    async def set_follow_mode(self, state: int) -> None:
+        """Enable or disable follow mode.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_follow_state", {"state": state})
+
+    async def set_draw_mode(self, state: int) -> None:
+        """Enable or disable draw/mapping mode.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("start_draw_cmd", {"state": state})
+
+    # ------------------------------------------------------------------
+    # OTA / firmware updates
+    # ------------------------------------------------------------------
+
+    async def set_auto_update(self, state: int) -> None:
+        """Enable or disable automatic firmware (Greengrass) updates.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_greengrass_auto_update_switch", {"state": state})
+
+    async def set_camera_ota(self, state: int) -> None:
+        """Enable or disable IP camera OTA updates.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_ipcamera_ota_switch", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Vision / recording
+    # ------------------------------------------------------------------
+
+    async def set_smart_vision(self, state: int) -> None:
+        """Enable or disable smart vision processing.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("smart_vision_control", {"state": state})
+
+    async def set_video_record(self, state: int) -> None:
+        """Enable or disable video recording.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("enable_video_record", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Safety / fencing
+    # ------------------------------------------------------------------
+
+    async def set_child_lock(self, state: int) -> None:
+        """Enable or disable the child lock.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("child_lock", {"state": state})
+
+    async def set_geo_fence(self, state: int) -> None:
+        """Enable or disable geo-fencing.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("enable_geo_fence", {"state": state})
+
+    async def set_elec_fence(self, state: int) -> None:
+        """Enable or disable the electric fence.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("enable_elec_fence", {"state": state})
+
+    async def set_ngz_edge(self, state: int) -> None:
+        """Enable or disable NGZ (no-go-zone) edge enforcement.
+
+        Args:
+            state: 1 to enable, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("ngz_edge", {"state": state})
+
+    # ------------------------------------------------------------------
+    # Manual drive extras
+    # ------------------------------------------------------------------
+
+    async def set_velocity_manual(self, linear: float, angular: float) -> None:
+        """Send a velocity command in manual drive mode.
+
+        Args:
+            linear:  Linear velocity (forward positive).
+            angular: Angular velocity (counter-clockwise positive).
+        """
+        await self._ensure_controller()
+        await self._transport.publish("cmd_vel", {"vel": linear, "rev": angular})
+
+    async def set_sound_param(self, volume: int, enabled: int) -> None:
+        """Set sound volume and enable/disable audio output.
+
+        Args:
+            volume:  Volume level (0-100).
+            enabled: 1 to enable audio, 0 to disable.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("set_sound_param", {"volume": volume, "enable": enabled})
+
+    # ------------------------------------------------------------------
+    # Map management (destructive)
+    # ------------------------------------------------------------------
+
+    async def erase_map(self, confirm: bool = False) -> None:
+        """Erase the robot's stored map.
+
+        .. warning::
+            This is a **destructive** operation. The map cannot be recovered
+            after erasure. You must pass ``confirm=True`` to proceed.
+
+        Args:
+            confirm: Must be ``True`` to proceed.
+
+        Raises:
+            ValueError: If *confirm* is not ``True``.
+        """
+        if not confirm:
+            raise ValueError("erase_map is destructive — pass confirm=True to proceed.")
+        await self._ensure_controller()
+        await self._transport.publish("erase_map", {})
+
+    async def map_recovery(self, map_id: str, confirm: bool = False) -> None:
+        """Restore a map from a backup by ID.
+
+        .. warning::
+            This is a **destructive** operation — it overwrites the current map.
+            You must pass ``confirm=True`` to proceed.
+
+        Args:
+            map_id:  ID of the map backup to restore.
+            confirm: Must be ``True`` to proceed.
+
+        Raises:
+            ValueError: If *confirm* is not ``True``.
+        """
+        if not confirm:
+            raise ValueError("map_recovery is destructive — pass confirm=True to proceed.")
+        await self._ensure_controller()
+        await self._transport.publish("map_recovery", {"mapId": map_id})
+
+    async def save_current_map(self) -> None:
+        """Save the robot's current map state."""
+        await self._ensure_controller()
+        await self._transport.publish("save_current_map", {})
+
+    async def save_map_backup_list(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Save map backup and retrieve all map backup names and IDs.
+
+        Args:
+            timeout: Seconds to wait for the response (default 5.0).
+
+        Returns:
+            Response payload dict, or empty dict on timeout.
+        """
+        return await self._request_data_feedback(
+            "save_map_backup_and_get_all_map_backup_nameandid", {}, timeout
+        )
 
     # ------------------------------------------------------------------
     # Sync wrapper

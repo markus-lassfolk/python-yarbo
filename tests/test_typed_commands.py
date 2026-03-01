@@ -77,6 +77,36 @@ def mock_local():
             "save_charging_point",
             "save_map_backup",
             "start_hotspot",
+            # new typed methods
+            "publish_command",
+            "set_blade_height",
+            "set_blade_speed",
+            "set_charge_limit",
+            "set_turn_type",
+            "push_snow_dir",
+            "set_chute_steering_work",
+            "set_roller_speed",
+            "set_motor_protect",
+            "set_trimmer",
+            "set_edge_blowing",
+            "set_smart_blowing",
+            "set_heating_film",
+            "set_module_lock",
+            "set_follow_mode",
+            "set_draw_mode",
+            "set_auto_update",
+            "set_camera_ota",
+            "set_smart_vision",
+            "set_video_record",
+            "set_child_lock",
+            "set_geo_fence",
+            "set_elec_fence",
+            "set_ngz_edge",
+            "set_velocity_manual",
+            "set_sound_param",
+            "erase_map",
+            "map_recovery",
+            "save_current_map",
             # data_feedback methods return a dict
             "read_plan",
             "read_all_plans",
@@ -242,12 +272,20 @@ class TestPlansScheduling:
         assert isinstance(result, dict)
 
     async def test_delete_plan(self, client, mock_transport):
-        await client.delete_plan_direct(5)
+        await client.delete_plan_direct(5, confirm=True)
         mock_transport.publish.assert_called_once_with("del_plan", {"planId": 5})
 
+    async def test_delete_plan_requires_confirm(self, client, mock_transport):
+        with pytest.raises(ValueError, match="confirm=True"):
+            await client.delete_plan_direct(5)
+
     async def test_delete_all_plans(self, client, mock_transport):
-        await client.delete_all_plans()
+        await client.delete_all_plans(confirm=True)
         mock_transport.publish.assert_called_once_with("del_all_plan", {})
+
+    async def test_delete_all_plans_requires_confirm(self, client, mock_transport):
+        with pytest.raises(ValueError, match="confirm=True"):
+            await client.delete_all_plans()
 
     async def test_pause_plan(self, client, mock_transport):
         await client.pause_planning()
@@ -408,6 +446,183 @@ class TestDataFeedbackTimeout:
         mock_transport.wait_for_message = AsyncMock(return_value="unexpected")
         result = await client.get_speed()
         assert result == {}
+
+
+
+# ===========================================================================
+# Tests: YarboLocalClient — new typed commands (Task B)
+# ===========================================================================
+
+
+@pytest.mark.asyncio
+class TestBladeConfiguration:
+    async def test_set_blade_height(self, client, mock_transport):
+        await client.set_blade_height(3)
+        mock_transport.publish.assert_called_once_with("set_blade_height", {"height": 3})
+
+    async def test_set_blade_speed(self, client, mock_transport):
+        await client.set_blade_speed(5)
+        mock_transport.publish.assert_called_once_with("set_blade_speed", {"speed": 5})
+
+    async def test_set_charge_limit(self, client, mock_transport):
+        await client.set_charge_limit(20, 80)
+        mock_transport.publish.assert_called_once_with("set_charge_limit", {"min": 20, "max": 80})
+
+    async def test_set_turn_type(self, client, mock_transport):
+        await client.set_turn_type(2)
+        mock_transport.publish.assert_called_once_with("set_turn_type", {"turnType": 2})
+
+
+@pytest.mark.asyncio
+class TestSnowBlowerAccessories:
+    async def test_push_snow_dir(self, client, mock_transport):
+        await client.push_snow_dir(1)
+        mock_transport.publish.assert_called_once_with("push_snow_dir", {"direction": 1})
+
+    async def test_set_chute_steering_work(self, client, mock_transport):
+        await client.set_chute_steering_work(45)
+        mock_transport.publish.assert_called_once_with("cmd_chute_streeing_work", {"angle": 45})
+
+    async def test_set_roller_speed(self, client, mock_transport):
+        await client.set_roller_speed(1500)
+        mock_transport.publish.assert_called_once_with("cmd_roller", {"speed": 1500})
+
+
+@pytest.mark.asyncio
+class TestMotorAndMechanical:
+    async def test_set_motor_protect(self, client, mock_transport):
+        await client.set_motor_protect(1)
+        mock_transport.publish.assert_called_once_with("cmd_motor_protect", {"state": 1})
+
+    async def test_set_trimmer(self, client, mock_transport):
+        await client.set_trimmer(1)
+        mock_transport.publish.assert_called_once_with("cmd_trimmer", {"state": 1})
+
+
+@pytest.mark.asyncio
+class TestBlowingAndEdgeFeatures:
+    async def test_set_edge_blowing(self, client, mock_transport):
+        await client.set_edge_blowing(1)
+        mock_transport.publish.assert_called_once_with("edge_blowing", {"state": 1})
+
+    async def test_set_smart_blowing(self, client, mock_transport):
+        await client.set_smart_blowing(0)
+        mock_transport.publish.assert_called_once_with("smart_blowing", {"state": 0})
+
+    async def test_set_heating_film(self, client, mock_transport):
+        await client.set_heating_film(1)
+        mock_transport.publish.assert_called_once_with("heating_film_ctrl", {"state": 1})
+
+    async def test_set_module_lock(self, client, mock_transport):
+        await client.set_module_lock(1)
+        mock_transport.publish.assert_called_once_with("module_lock_ctl", {"state": 1})
+
+
+@pytest.mark.asyncio
+class TestAutonomousModes:
+    async def test_set_follow_mode(self, client, mock_transport):
+        await client.set_follow_mode(1)
+        mock_transport.publish.assert_called_once_with("set_follow_state", {"state": 1})
+
+    async def test_set_draw_mode(self, client, mock_transport):
+        await client.set_draw_mode(1)
+        mock_transport.publish.assert_called_once_with("start_draw_cmd", {"state": 1})
+
+
+@pytest.mark.asyncio
+class TestOtaUpdates:
+    async def test_set_auto_update(self, client, mock_transport):
+        await client.set_auto_update(1)
+        mock_transport.publish.assert_called_once_with(
+            "set_greengrass_auto_update_switch", {"state": 1}
+        )
+
+    async def test_set_camera_ota(self, client, mock_transport):
+        await client.set_camera_ota(0)
+        mock_transport.publish.assert_called_once_with("set_ipcamera_ota_switch", {"state": 0})
+
+
+@pytest.mark.asyncio
+class TestVisionAndRecording:
+    async def test_set_smart_vision(self, client, mock_transport):
+        await client.set_smart_vision(1)
+        mock_transport.publish.assert_called_once_with("smart_vision_control", {"state": 1})
+
+    async def test_set_video_record(self, client, mock_transport):
+        await client.set_video_record(1)
+        mock_transport.publish.assert_called_once_with("enable_video_record", {"state": 1})
+
+
+@pytest.mark.asyncio
+class TestSafetyAndFencing:
+    async def test_set_child_lock(self, client, mock_transport):
+        await client.set_child_lock(1)
+        mock_transport.publish.assert_called_once_with("child_lock", {"state": 1})
+
+    async def test_set_geo_fence(self, client, mock_transport):
+        await client.set_geo_fence(1)
+        mock_transport.publish.assert_called_once_with("enable_geo_fence", {"state": 1})
+
+    async def test_set_elec_fence(self, client, mock_transport):
+        await client.set_elec_fence(1)
+        mock_transport.publish.assert_called_once_with("enable_elec_fence", {"state": 1})
+
+    async def test_set_ngz_edge(self, client, mock_transport):
+        await client.set_ngz_edge(0)
+        mock_transport.publish.assert_called_once_with("ngz_edge", {"state": 0})
+
+
+@pytest.mark.asyncio
+class TestManualDriveExtras:
+    async def test_set_velocity_manual(self, client, mock_transport):
+        await client.set_velocity_manual(0.5, -0.3)
+        mock_transport.publish.assert_called_once_with("cmd_vel", {"vel": 0.5, "rev": -0.3})
+
+    async def test_set_sound_param(self, client, mock_transport):
+        await client.set_sound_param(80, 1)
+        mock_transport.publish.assert_called_once_with(
+            "set_sound_param", {"volume": 80, "enable": 1}
+        )
+
+
+@pytest.mark.asyncio
+class TestPublishCommand:
+    async def test_publish_command_delegates_to_transport(self, client, mock_transport):
+        await client.publish_command("custom_cmd", {"key": "val"})
+        mock_transport.publish.assert_called_once_with("custom_cmd", {"key": "val"})
+
+
+@pytest.mark.asyncio
+class TestDestructiveMapCommands:
+    async def test_erase_map_requires_confirm(self, client, mock_transport):
+        with pytest.raises(ValueError, match="confirm=True"):
+            await client.erase_map()
+
+    async def test_erase_map_with_confirm(self, client, mock_transport):
+        await client.erase_map(confirm=True)
+        mock_transport.publish.assert_called_once_with("erase_map", {})
+
+    async def test_map_recovery_requires_confirm(self, client, mock_transport):
+        with pytest.raises(ValueError, match="confirm=True"):
+            await client.map_recovery("backup-id-123")
+
+    async def test_map_recovery_with_confirm(self, client, mock_transport):
+        await client.map_recovery("backup-id-123", confirm=True)
+        mock_transport.publish.assert_called_once_with(
+            "map_recovery", {"mapId": "backup-id-123"}
+        )
+
+    async def test_save_current_map(self, client, mock_transport):
+        await client.save_current_map()
+        mock_transport.publish.assert_called_once_with("save_current_map", {})
+
+    async def test_save_map_backup_list(self, client, mock_transport):
+        mock_transport.wait_for_message = AsyncMock(return_value={"topic": "save_map_backup_list"})
+        result = await client.save_map_backup_list()
+        mock_transport.publish.assert_called_once_with(
+            "save_map_backup_and_get_all_map_backup_nameandid", {}
+        )
+        assert isinstance(result, dict)
 
 
 # ===========================================================================
