@@ -18,6 +18,11 @@ _SCRUB_KEY_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credenti
 _SCRUB_MSG_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential")
 _SCRUB_KEY_PATTERN = re.compile(r"(?:_|api|access|auth|private)key", re.IGNORECASE)
 
+# Default DSN for the python-yarbo GlitchTip project.
+# Enabled by default during beta to help find issues.
+# Opt-out: set YARBO_SENTRY_DSN="" or pass enabled=False.
+_DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@glitchtip.lassfolk.cc/2"
+
 
 def init_error_reporting(
     dsn: str | None = None,
@@ -26,14 +31,14 @@ def init_error_reporting(
 ) -> None:
     """Initialize Sentry/GlitchTip error reporting.
 
-    Opt-in: enable by providing a DSN via argument or environment variables.
-    To disable explicitly, pass enabled=False or set YARBO_SENTRY_DSN="".
+    Enabled by default during beta with a built-in DSN. No PII is collected;
+    credentials and sensitive keys are scrubbed before sending.
+
+    To opt out, set ``YARBO_SENTRY_DSN=""`` or pass ``enabled=False``.
 
     Args:
         dsn: Sentry DSN. If omitted, falls back to the ``YARBO_SENTRY_DSN`` or
-             ``SENTRY_DSN`` environment variables.  No compiled-in default is
-             provided; set the env var explicitly.  Pass ``enabled=False`` or
-             set ``YARBO_SENTRY_DSN=""`` to fully disable reporting.
+             ``SENTRY_DSN`` environment variables, then the built-in default.
         environment: Environment tag (production/development/testing).
         enabled: Master switch. If False, no SDK initialization occurs.
     """
@@ -47,7 +52,7 @@ def init_error_reporting(
     if env_dsn is not None and env_dsn == "":
         return  # Explicitly disabled
 
-    dsn = dsn or env_dsn or os.environ.get("SENTRY_DSN")
+    dsn = dsn or env_dsn or os.environ.get("SENTRY_DSN") or _DEFAULT_DSN
 
     if not dsn:
         return
@@ -128,7 +133,7 @@ def report_mqtt_dump_to_glitchtip(
     sentry_sdk.capture_message(
         "MQTT dump (user-reported)",
         level="info",
-        extra={"mqtt_dump": dump, "message_count": len(scrubbed)},
+        extras={"mqtt_dump": dump, "message_count": len(scrubbed)},
     )
     logger.info("MQTT dump sent to GlitchTip (%d messages)", len(scrubbed))
     return True

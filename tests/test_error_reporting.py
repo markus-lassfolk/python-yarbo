@@ -123,8 +123,9 @@ class TestScrubMqttEnvelope:
 
 
 class TestReportMqttDumpToGlitchtip:
-    def test_returns_false_when_sentry_not_initialized(self):
+    def test_returns_false_when_sentry_not_initialized(self, monkeypatch):
         """When Sentry is not initialized, report_mqtt_dump_to_glitchtip returns False."""
+        monkeypatch.setattr("sentry_sdk.is_initialized", lambda: False)
         result = report_mqtt_dump_to_glitchtip([{"direction": "sent", "topic": "t", "payload": {}}])
         assert result is False
 
@@ -154,7 +155,7 @@ class TestReportMqttDumpToGlitchtip:
         call_args = mock_sentry.capture_message.call_args
         assert call_args[0][0] == "MQTT dump (user-reported)"
         assert call_args[1]["level"] == "info"
-        extra = call_args[1]["extra"]
+        extra = call_args[1]["extras"]
         assert "mqtt_dump" in extra
         assert "message_count" in extra
         assert extra["message_count"] == 2
@@ -182,7 +183,7 @@ class TestReportMqttDumpToGlitchtip:
                 sys.modules.pop("sentry_sdk", None)
             else:
                 sys.modules["sentry_sdk"] = old_sentry
-        extra = mock_sentry.capture_message.call_args[1]["extra"]
+        extra = mock_sentry.capture_message.call_args[1]["extras"]
         assert "[REDACTED]" in extra["mqtt_dump"]
         assert "secret" not in extra["mqtt_dump"]
         assert "50" in extra["mqtt_dump"]
