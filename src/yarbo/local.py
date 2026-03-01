@@ -6,7 +6,7 @@ requiring a cloud account. All operations are local and work offline.
 
 Prerequisites:
 - The host machine must be on the same WiFi as the robot.
-- The robot's EMQX broker IP must be known (default: 192.168.1.24).
+- The robot's EMQX broker IP must be known (use ``discover()`` to find it).
 - ``paho-mqtt`` must be installed: ``pip install 'python-yarbo'``.
 
 Protocol notes (from live captures):
@@ -80,7 +80,7 @@ class YarboLocalClient:
         await client.disconnect()
 
     Args:
-        broker:         MQTT broker IP address.
+        broker:         MQTT broker IP address (required; use ``discover()`` to find it).
         sn:             Robot serial number.
         port:           Broker port (default 1883).
         auto_controller: If ``True`` (default), automatically send
@@ -98,6 +98,11 @@ class YarboLocalClient:
         debug_raw: bool = False,
         mqtt_capture_max: int = 0,
     ) -> None:
+        if not broker:
+            raise ValueError(
+                "broker parameter is required and cannot be empty. "
+                "Use discover() to find the robot's MQTT broker IP address."
+            )
         self._broker = broker
         self._sn = sn
         self._port = port
@@ -685,7 +690,8 @@ class YarboLocalClient:
         )
         if msg is None:
             return {}
-        return dict(msg.get("data", {}) or {})
+        data = msg.get("data", {}) or {}
+        return data if isinstance(data, dict) else {"data": data}
 
     async def set_global_params(self, params: dict[str, Any]) -> YarboCommandResult:
         """Save global robot parameters (``cmd_save_para``).
@@ -730,7 +736,8 @@ class YarboLocalClient:
         )
         if msg is None:
             return {}
-        return dict(msg.get("data", {}) or {})
+        data = msg.get("data", {}) or {}
+        return data if isinstance(data, dict) else {"data": data}
 
     # ------------------------------------------------------------------
     # Plan creation
