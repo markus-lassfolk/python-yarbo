@@ -495,7 +495,7 @@ class MqttTransport:
                     topic = f"snowbot/+/device/{leaf}"
                     client.subscribe(topic, qos=self._qos)
                     logger.debug("Subscribed (discovery): %s", topic)
-            if self._loop:
+            if self._loop and not self._loop.is_closed():
                 self._loop.call_soon_threadsafe(self._connected.set)
                 if is_reconnect:
                     logger.info("MQTT reconnected — re-subscribed (sn=%s)", self._sn)
@@ -515,7 +515,7 @@ class MqttTransport:
         """paho-mqtt v2 on_disconnect callback."""
         rc = getattr(reason_code, "value", reason_code)
         self._was_connected = True  # next _on_connect is a reconnect
-        if self._loop:
+        if self._loop and not self._loop.is_closed():
             self._loop.call_soon_threadsafe(self._connected.clear)
         logger.warning("MQTT disconnected rc=%s", rc)
 
@@ -583,7 +583,7 @@ class MqttTransport:
                 if len(parts) >= 2 and parts[0] == "snowbot" and parts[1]:
                     self._sn = parts[1]
                     logger.info("Discovered robot serial number: %s", self._sn)
-            if self._loop and self._message_queues:
+            if self._loop and not self._loop.is_closed() and self._message_queues:
                 for q in list(self._message_queues):
                     # Each consumer gets its own deep copy so that no two consumers
                     # can accidentally mutate each other's view of the envelope.
