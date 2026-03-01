@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "python-yarbo"
-version = "0.1.0"
-description = "Python library for local and cloud control of Yarbo robot mowers via MQTT"
+version = "0.1.1"
+description = "Python library for local control of Yarbo robot mowers and snow blowers via MQTT"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "Markus Lassfolk" }]
