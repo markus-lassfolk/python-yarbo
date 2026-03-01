@@ -5,7 +5,7 @@ All MQTT payloads in the Yarbo protocol are zlib-compressed JSON.
 The robot firmware checks the firmware version (>= 3.9.0, MIN_ZIP_MQTT_VERSION)
 before decompressing. All current firmware versions use zlib compression.
 
-Reference: Blutter ASM analysis of the Flutter app's MqttPublish class.
+Reference: Community protocol documentation for the Yarbo MQTT interface.
 """
 
 from __future__ import annotations

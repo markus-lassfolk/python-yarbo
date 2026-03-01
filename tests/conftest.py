@@ -39,8 +39,8 @@ def sample_sn() -> str:
 
 @pytest.fixture
 def sample_broker() -> str:
-    """Test broker IP."""
-    return "192.168.1.24"
+    """Test broker IP (RFC 5737 documentation range)."""
+    return "192.0.2.1"
 
 
 @pytest.fixture

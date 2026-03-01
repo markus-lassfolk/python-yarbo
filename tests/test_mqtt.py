@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import ssl
 from unittest.mock import AsyncMock, MagicMock, patch
 import zlib
 
@@ -178,7 +179,7 @@ class TestMqttTransportCallbacks:
         on_connect accepts plain int reason_code (paho v1 style).
         ``getattr(0, 'value', 0)`` → 0, so connection proceeds.
         """
-        transport = MqttTransport(broker="192.168.1.24", sn="ROBOT1")
+        transport = MqttTransport(broker="192.0.2.1", sn="ROBOT1")
         # Simulate the callback method directly
         connected_event = asyncio.Event()
         transport._connected = connected_event
@@ -201,7 +202,7 @@ class TestMqttTransportCallbacks:
         on_connect accepts a ReasonCode-like object with a .value attribute.
         This matches paho v2's actual callback contract.
         """
-        transport = MqttTransport(broker="192.168.1.24", sn="ROBOT1")
+        transport = MqttTransport(broker="192.0.2.1", sn="ROBOT1")
         connected_event = asyncio.Event()
         transport._connected = connected_event
 
@@ -221,7 +222,7 @@ class TestMqttTransportCallbacks:
 
     async def test_on_connect_subscribes_all_leaves(self):
         """on_connect subscribes to ALL_FEEDBACK_LEAVES."""
-        transport = MqttTransport(broker="192.168.1.24", sn="ROBOT1")
+        transport = MqttTransport(broker="192.0.2.1", sn="ROBOT1")
         transport._connected = asyncio.Event()
         mock_client = MagicMock()
         transport._client = mock_client
@@ -537,7 +538,7 @@ class TestMqttReconnect:
             instance.add_reconnect_callback = MagicMock(side_effect=callbacks.append)
             MockT.return_value = instance
 
-            client = YarboLocalClient(broker="192.168.1.24", sn="TEST")
+            client = YarboLocalClient(broker="192.0.2.1", sn="TEST")
             client._controller_acquired = True
             await client.connect()
 
@@ -545,3 +546,71 @@ class TestMqttReconnect:
             assert len(callbacks) == 1
             callbacks[0]()  # simulates transport reconnect
             assert client._controller_acquired is False
+
+
+@pytest.mark.asyncio
+class TestMqttTlsSecurity:
+    """TLS validation must be enforced by default — CERT_NONE must never be used."""
+
+    async def test_tls_no_ca_uses_default_context(self, mock_paho):
+        """When tls=True and tls_ca_certs=None, ssl.create_default_context() is used."""
+
+        mock_ctx = MagicMock()
+        with patch("ssl.create_default_context", return_value=mock_ctx) as mock_create:
+            transport = MqttTransport(broker="broker.example.com", sn="SN1", tls=True)
+            connect_task = asyncio.create_task(transport.connect())
+            await asyncio.sleep(0)  # let connect() run up to wait_for(_connected)
+
+            # tls_set must have been called before loop_start/wait_for
+            mock_paho.tls_set.assert_called_once()
+            call_kwargs = mock_paho.tls_set.call_args[1]
+            assert call_kwargs.get("ssl_context") is mock_ctx, (
+                "Expected ssl_context=create_default_context() when tls_ca_certs is None"
+            )
+            # CERT_NONE must never appear
+            assert call_kwargs.get("cert_reqs") != ssl.CERT_NONE
+            mock_create.assert_called_once_with()
+
+        # Clean up the pending connect task
+        mock_paho._fire_connect(0)
+        await asyncio.sleep(0)
+        await connect_task
+
+    async def test_tls_with_ca_certs_uses_cert_required(self, mock_paho):
+        """When tls=True and tls_ca_certs is set, CERT_REQUIRED and ca_certs are used."""
+
+        transport = MqttTransport(
+            broker="broker.example.com", sn="SN1", tls=True, tls_ca_certs="/path/to/ca.pem"
+        )
+        connect_task = asyncio.create_task(transport.connect())
+        await asyncio.sleep(0)
+
+        mock_paho.tls_set.assert_called_once()
+        call_kwargs = mock_paho.tls_set.call_args[1]
+        assert call_kwargs.get("ca_certs") == "/path/to/ca.pem"
+        assert call_kwargs.get("cert_reqs") == ssl.CERT_REQUIRED
+        # ssl_context path must NOT be taken when a CA file is given
+        assert "ssl_context" not in call_kwargs
+
+        mock_paho._fire_connect(0)
+        await asyncio.sleep(0)
+        await connect_task
+
+    async def test_cert_none_never_used_as_default(self, mock_paho):
+        """ssl.CERT_NONE must never appear in the tls_set call for the default config."""
+
+        with patch("ssl.create_default_context", return_value=MagicMock()):
+            transport = MqttTransport(broker="broker.example.com", sn="SN1", tls=True)
+            connect_task = asyncio.create_task(transport.connect())
+            await asyncio.sleep(0)
+
+        for call in mock_paho.tls_set.call_args_list:
+            args, kwargs = call
+            assert ssl.CERT_NONE not in args, "CERT_NONE must not appear in positional args"
+            assert kwargs.get("cert_reqs") != ssl.CERT_NONE, (
+                "CERT_NONE must not be passed as cert_reqs"
+            )
+
+        mock_paho._fire_connect(0)
+        await asyncio.sleep(0)
+        await connect_task

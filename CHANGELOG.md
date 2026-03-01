@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [2026.3.10] — 2026-03-01
+
+First public release. Local MQTT control only — cloud integration is experimental and not fully tested.
+
+### Added
+
+- **CLI (`yarbo`)** — full-featured command-line interface
+  - `yarbo discover` — find Rover/DC brokers (optional `--subnet`, `--max-hosts`)
+  - `yarbo status` — connect with primary/fallback, print full telemetry
+  - `yarbo battery`, `yarbo telemetry` — status and live stream
+  - `yarbo lights-on`, `yarbo lights-off`, `yarbo buzzer`, `yarbo chute`, `yarbo return-to-dock`
+  - `yarbo plans`, `yarbo plan-start`, `yarbo plan-stop`, `yarbo plan-pause`, `yarbo plan-resume`
+  - `yarbo schedules`, `yarbo manual-start`, `yarbo velocity`, `yarbo roller`, `yarbo manual-stop`
+  - `yarbo global-params`, `yarbo map` — read-only data
+  - All commands support `--broker` / `--sn` or auto-discover
+- **Discovery** — auto-detect local subnets, skip large ranges, DC/Rover classification
+- **Telemetry** — full MQTT telemetry parsing with 40+ fields
+- **25+ typed command methods** with full docstrings and parameter validation
+  - Mowing: `start_plan`, `stop_plan`, `pause_plan`, `resume_plan`
+  - Configuration: `set_velocity`, `set_lights`, `set_person_detect`, `set_ignore_obstacles`
+  - Snow: `push_snow_dir`, `set_chute`, `set_chute_steering_work`
+  - Maintenance: `firmware_update_now/tonight/later`, `check_camera_status`, `camera_calibration`
+  - Head-specific: `set_roller_speed`, `set_blade_height`, `set_blade_speed`
+  - Data: `get_map`, `get_saved_wifi_list`, `get_status`, `get_global_params`
+- **Destructive operation safeguards** — `delete_plan`, `delete_all_plans`, `erase_map`, `map_recovery` require `confirm=True`
+- **Head-type validation** — commands validated against current head type (mower/snow blower/sweeper)
+- **Debug logging** — optional verbose MQTT logging for troubleshooting
+
+### Security
+
+- **TLS certificate validation enforced** for cloud MQTT connections (system trust store by default)
+- Discovery future race condition fixed (multiple heartbeats no longer cause `InvalidStateError`)
+- `YarboAuth` now implements context manager for proper session lifecycle (`async with`)
+- Logout failures logged instead of silently swallowed
+
+### Note
+
+> **Cloud integration is experimental.** The cloud MQTT and HTTP API modules (`cloud_mqtt.py`, `cloud.py`, `auth.py`) are included for completeness but have not been tested against live Yarbo cloud infrastructure. Use local MQTT control for production. Cloud support will be fully validated in a future release.
+
+
 ## [0.1.0] — 2026-02-26
 
 ### Added
@@ -60,7 +102,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Confirmed: topics `snowbot/{SN}/app/{cmd}` and `snowbot/{SN}/device/{feedback}`
 - Confirmed: light keys `led_head`, `led_left_w`, `led_right_w`, `body_left_r`,
   `body_right_r`, `tail_left_r`, `tail_right_r` (integers 0–255)
-- Local broker: EMQX at 192.168.1.24:1883 (confirmed from live captures)
+- Local broker: EMQX on port 1883 (use `yarbo discover --subnet <CIDR>` to find broker IP)
 
 [Unreleased]: https://github.com/markus-lassfolk/python-yarbo/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/markus-lassfolk/python-yarbo/releases/tag/v0.1.0
