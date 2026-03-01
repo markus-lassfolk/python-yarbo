@@ -20,7 +20,6 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 from yarbo.discovery import connection_order, discover
-from yarbo.error_reporting import report_mqtt_dump_to_glitchtip
 from yarbo.exceptions import YarboError
 from yarbo.local import YarboLocalClient
 
