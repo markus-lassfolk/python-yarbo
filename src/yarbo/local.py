@@ -1252,7 +1252,6 @@ class YarboLocalClient:
         await self._ensure_controller()
         await self._transport.publish(cmd, payload)
 
-
     async def save_current_map(self) -> None:
         """Save the robot's current map state."""
         await self._ensure_controller()

@@ -161,7 +161,6 @@ def _scrub_dict(d: dict[str, Any]) -> dict[str, Any]:
     return result
 
 
-
 def _scrub_string(value: str) -> str:
     """Return a redacted string if it appears to contain sensitive data."""
     lowered = value.lower()
