@@ -200,6 +200,10 @@ async def _with_client(
             broker=args.broker,
             sn=args.serial,
             port=getattr(args, "port", 1883),
+            mqtt_log_path=getattr(args, "log_mqtt", None),
+            debug=getattr(args, "debug", False),
+            debug_raw=getattr(args, "debug_raw", False),
+            mqtt_capture_max=0,
         )
         await client.connect()
         try:
@@ -226,6 +230,10 @@ async def _with_client(
                 broker=ep.ip,
                 port=ep.port,
                 sn=ep.sn,
+                mqtt_log_path=getattr(args, "log_mqtt", None),
+                debug=getattr(args, "debug", False),
+                debug_raw=getattr(args, "debug_raw", False),
+                mqtt_capture_max=0,
             )
             await client.connect()
         except (YarboError, OSError, TimeoutError) as e:
