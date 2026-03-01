@@ -386,16 +386,6 @@ class YarboClient:
         """Request the product code and await the data_feedback response."""
         return await self._local.get_product_code(timeout)
 
-    # -- Blade / mowing configuration --
-
-    async def set_blade_height(self, height: int) -> None:
-        """Set the blade cutting height."""
-        await self._local.set_blade_height(height)
-
-    async def set_blade_speed(self, speed: int) -> None:
-        """Set the blade rotation speed."""
-        await self._local.set_blade_speed(speed)
-
     async def set_charge_limit(self, min_pct: int, max_pct: int) -> None:
         """Set battery charge limits."""
         await self._local.set_charge_limit(min_pct, max_pct)
@@ -403,20 +393,6 @@ class YarboClient:
     async def set_turn_type(self, turn_type: int) -> None:
         """Set the turning behaviour type."""
         await self._local.set_turn_type(turn_type)
-
-    # -- Snow blower accessories --
-
-    async def push_snow_dir(self, direction: int) -> None:
-        """Set the snow push direction."""
-        await self._local.push_snow_dir(direction)
-
-    async def set_chute_steering_work(self, angle: int) -> None:
-        """Set the chute steering angle during work."""
-        await self._local.set_chute_steering_work(angle)
-
-    async def set_roller_speed(self, speed: int) -> None:
-        """Set the roller/blower speed."""
-        await self._local.set_roller_speed(speed)
 
     # -- Motor & mechanical --
 
