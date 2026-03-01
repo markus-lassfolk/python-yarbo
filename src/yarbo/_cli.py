@@ -491,7 +491,11 @@ async def _run_discover(args: argparse.Namespace) -> None:
 async def _run_status(args: argparse.Namespace) -> None:
     logging.basicConfig(level=logging.WARNING, format="%(message)s")
     if not (args.broker and args.serial):
-        print("Discovering...")
+        print(
+            "Discovering... (scanning network; may take a minute. "
+            "Use --broker IP --sn SERIAL to skip.)",
+            flush=True,
+        )
     async for client, ip in _with_client(args):
         status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
         if status:
