@@ -196,7 +196,7 @@ class MqttTransport:
                     cert_reqs=ssl.CERT_REQUIRED,
                 )
             else:
-                client.tls_set(ssl_context=ssl.create_default_context())
+                client.tls_set_context(ssl.create_default_context())
 
         # Blocking: DNS resolution + TCP connect (+ optional TLS handshake).
         client.connect(self._broker, self._port, keepalive=MQTT_KEEPALIVE)
@@ -212,7 +212,7 @@ class MqttTransport:
         """
         loop = asyncio.get_running_loop()
         try:
-            self._client = await loop.run_in_executor(None, self._create_and_connect_paho)
+            client = await loop.run_in_executor(None, self._create_and_connect_paho)
         except ImportError as exc:
             raise YarboConnectionError(
                 "paho-mqtt is required: pip install 'python-yarbo[mqtt]'"
@@ -222,22 +222,23 @@ class MqttTransport:
                 f"Cannot connect to MQTT broker {self._broker}:{self._port}: {exc}"
             ) from exc
 
+        self._client = client
         # Back on the asyncio event loop: capture the loop reference *now* so
         # that paho callbacks (_on_connect, _on_disconnect, _on_message) bridge
         # back via call_soon_threadsafe on the correct, live loop — not a dead
         # throwaway loop that was closed after an executor run.
         self._loop = loop
         self._connected.clear()
-        self._client.on_connect = self._on_connect
-        self._client.on_disconnect = self._on_disconnect
-        self._client.on_message = self._on_message
-        self._client.loop_start()
+        client.on_connect = self._on_connect
+        client.on_disconnect = self._on_disconnect
+        client.on_message = self._on_message
+        client.loop_start()
 
         try:
             await asyncio.wait_for(self._connected.wait(), timeout=self._connect_timeout)
         except TimeoutError as exc:
             # Run loop_stop in executor — it joins the paho thread and must not block the loop.
-            await loop.run_in_executor(None, self._client.loop_stop)
+            await loop.run_in_executor(None, client.loop_stop)
             raise YarboTimeoutError(
                 f"Timed out waiting for MQTT connection to {self._broker}:{self._port}"
             ) from exc

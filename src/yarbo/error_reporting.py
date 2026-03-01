@@ -13,6 +13,9 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Default DSN (override with YARBO_SENTRY_DSN or SENTRY_DSN).
+_DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@glitchtip.lassfolk.cc/2"
+
 # Sensitive-key scrubbing helpers — compiled once at import time.
 _SCRUB_KEY_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential", "key")
 _SCRUB_MSG_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential")
@@ -21,7 +24,6 @@ _SCRUB_KEY_PATTERN = re.compile(r"(?:_|api|access|auth|private)key", re.IGNORECA
 # Default DSN for the python-yarbo GlitchTip project.
 # Enabled by default during beta to help find issues.
 # Opt-out: set YARBO_SENTRY_DSN="" or pass enabled=False.
-_DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@glitchtip.lassfolk.cc/2"
 
 
 def init_error_reporting(
@@ -84,14 +86,9 @@ def _scrub_event(event: dict, hint: dict) -> dict:  # type: ignore[type-arg]
     if "breadcrumbs" in event and "values" in event["breadcrumbs"]:
         for breadcrumb in event["breadcrumbs"]["values"]:
             if "message" in breadcrumb:
-                msg = str(breadcrumb["message"])
-                sensitive = any(s in msg.lower() for s in _SCRUB_MSG_KEYWORDS)
-                if sensitive or _SCRUB_KEY_PATTERN.search(msg):
-                    breadcrumb["message"] = "[REDACTED]"
+                breadcrumb["message"] = _scrub_string(str(breadcrumb["message"]))
             if "data" in breadcrumb and isinstance(breadcrumb["data"], dict):
-                for key in list(breadcrumb["data"]):
-                    if any(s in key.lower() for s in _SCRUB_KEY_KEYWORDS):
-                        breadcrumb["data"][key] = "[REDACTED]"
+                breadcrumb["data"] = _scrub_breadcrumb_data(breadcrumb["data"])
 
     return event
 
@@ -150,7 +147,7 @@ def _scrub_mqtt_envelope(envelope: dict[str, Any]) -> dict[str, Any]:
 
 def _scrub_dict(d: dict[str, Any]) -> dict[str, Any]:
     """Recursively redact values for keys that look sensitive."""
-    result = {}
+    result: dict[str, Any] = {}
     for k, v in d.items():
         if any(s in k.lower() for s in _SCRUB_KEY_KEYWORDS):
             result[k] = "[REDACTED]"
@@ -161,3 +158,28 @@ def _scrub_dict(d: dict[str, Any]) -> dict[str, Any]:
         else:
             result[k] = v
     return result
+
+
+def _scrub_string(value: str) -> str:
+    """Return a redacted string if it appears to contain sensitive data."""
+    lowered = value.lower()
+    if any(s in lowered for s in _SCRUB_MSG_KEYWORDS) or _SCRUB_KEY_PATTERN.search(value):
+        return "[REDACTED]"
+    return value
+
+
+def _scrub_breadcrumb_data(value: Any) -> Any:
+    """Scrub breadcrumb data values as well as sensitive keys."""
+    if isinstance(value, dict):
+        cleaned: dict[str, Any] = {}
+        for k, v in value.items():
+            if any(s in k.lower() for s in _SCRUB_KEY_KEYWORDS):
+                cleaned[k] = "[REDACTED]"
+            else:
+                cleaned[k] = _scrub_breadcrumb_data(v)
+        return cleaned
+    if isinstance(value, list):
+        return [_scrub_breadcrumb_data(v) for v in value]
+    if isinstance(value, str):
+        return _scrub_string(value)
+    return value

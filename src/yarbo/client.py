@@ -204,6 +204,300 @@ class YarboClient:
         """Publish an arbitrary MQTT command to the robot."""
         await self._local.publish_raw(cmd, payload)
 
+    async def publish_command(self, cmd: str, payload: dict[str, Any]) -> None:
+        """Publish an arbitrary MQTT command to the robot (alias for publish_raw)."""
+        await self._local.publish_command(cmd, payload)
+
+    # -- Robot control --
+
+    async def shutdown(self) -> None:
+        """Power off the robot."""
+        await self._local.shutdown()
+
+    async def restart_container(self) -> None:
+        """Restart the EMQX container on the robot."""
+        await self._local.restart_container()
+
+    async def emergency_stop(self) -> None:
+        """Trigger an emergency stop."""
+        await self._local.emergency_stop()
+
+    async def emergency_unlock(self) -> None:
+        """Clear the emergency stop state."""
+        await self._local.emergency_unlock()
+
+    async def dstop(self) -> None:
+        """Soft-stop the robot (decelerate to halt)."""
+        await self._local.dstop()
+
+    async def resume(self) -> None:
+        """Resume operation after a pause or soft-stop."""
+        await self._local.resume()
+
+    async def cmd_recharge(self) -> None:
+        """Send the robot back to its charging dock."""
+        await self._local.cmd_recharge()
+
+    # -- Lights & sound --
+
+    async def set_head_light(self, enabled: bool) -> None:
+        """Enable or disable the head light."""
+        await self._local.set_head_light(enabled)
+
+    async def set_roof_lights(self, enabled: bool) -> None:
+        """Enable or disable the roof lights."""
+        await self._local.set_roof_lights(enabled)
+
+    async def set_laser(self, enabled: bool) -> None:
+        """Enable or disable the laser."""
+        await self._local.set_laser(enabled)
+
+    async def set_sound(self, volume: int, song_id: int = 0) -> None:
+        """Set the speaker volume (0-100)."""
+        await self._local.set_sound(volume, song_id)
+
+    async def play_song(self, song_id: int) -> None:
+        """Play a sound/song by ID."""
+        await self._local.play_song(song_id)
+
+    # -- Camera & detection --
+
+    async def set_camera(self, enabled: bool) -> None:
+        """Enable or disable the camera."""
+        await self._local.set_camera(enabled)
+
+    async def set_person_detect(self, enabled: bool) -> None:
+        """Enable or disable person detection."""
+        await self._local.set_person_detect(enabled)
+
+    async def set_usb(self, enabled: bool) -> None:
+        """Enable or disable the USB port."""
+        await self._local.set_usb(enabled)
+
+    # -- Plans & scheduling --
+
+    async def start_plan_direct(self, plan_id: int, percent: int = 100) -> None:
+        """Start a work plan by numeric ID (direct command, no response)."""
+        await self._local.start_plan_direct(plan_id, percent)
+
+    async def read_plan(self, plan_id: int, timeout: float = 5.0) -> dict[str, Any]:
+        """Request plan detail and await the data_feedback response."""
+        return await self._local.read_plan(plan_id, timeout)
+
+    async def read_all_plans(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request all plan summaries and await the data_feedback response."""
+        return await self._local.read_all_plans(timeout)
+
+    async def delete_plan_direct(self, plan_id: int, confirm: bool = False) -> None:
+        """Delete a plan by numeric ID. Pass confirm=True to proceed (destructive)."""
+        await self._local.delete_plan_direct(plan_id, confirm=confirm)
+
+    async def delete_all_plans(self, confirm: bool = False) -> None:
+        """Delete all stored plans from the robot. Pass confirm=True to proceed (destructive)."""
+        await self._local.delete_all_plans(confirm=confirm)
+
+    async def pause_planning(self) -> None:
+        """Pause the currently running plan (direct command, no response)."""
+        await self._local.pause_planning()
+
+    async def in_plan_action(self, action: str) -> None:
+        """Send an in-plan action command."""
+        await self._local.in_plan_action(action)
+
+    async def read_schedules(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request all schedules and await the data_feedback response."""
+        return await self._local.read_schedules(timeout)
+
+    # -- Navigation & maps --
+
+    async def start_waypoint(self, index: int) -> None:
+        """Start navigation to a waypoint by index."""
+        await self._local.start_waypoint(index)
+
+    async def read_recharge_point(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request the saved recharge/dock point and await the data_feedback response."""
+        return await self._local.read_recharge_point(timeout)
+
+    async def save_charging_point(self) -> None:
+        """Save the robot's current position as the charging/dock point."""
+        await self._local.save_charging_point()
+
+    async def read_clean_area(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request the clean area definition and await the data_feedback response."""
+        return await self._local.read_clean_area(timeout)
+
+    async def get_all_map_backup(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request all map backups and await the data_feedback response."""
+        return await self._local.get_all_map_backup(timeout)
+
+    async def save_map_backup(self) -> None:
+        """Save a backup of the current map."""
+        await self._local.save_map_backup()
+
+    # -- WiFi & connectivity --
+
+    async def get_wifi_list(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request the list of available WiFi networks and await the data_feedback response."""
+        return await self._local.get_wifi_list(timeout)
+
+    async def get_connected_wifi(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request the connected WiFi network name and await the data_feedback response."""
+        return await self._local.get_connected_wifi(timeout)
+
+    async def start_hotspot(self) -> None:
+        """Start the robot's WiFi hotspot."""
+        await self._local.start_hotspot()
+
+    async def get_hub_info(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request hub information and await the data_feedback response."""
+        return await self._local.get_hub_info(timeout)
+
+    # -- Diagnostics --
+
+    async def read_no_charge_period(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request no-charge period configuration and await the data_feedback response."""
+        return await self._local.read_no_charge_period(timeout)
+
+    async def get_battery_cell_temps(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request battery cell temperature data and await the data_feedback response."""
+        return await self._local.get_battery_cell_temps(timeout)
+
+    async def get_motor_temps(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request motor temperature data and await the data_feedback response."""
+        return await self._local.get_motor_temps(timeout)
+
+    async def get_body_current(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request body current telemetry and await the data_feedback response."""
+        return await self._local.get_body_current(timeout)
+
+    async def get_head_current(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request head current telemetry and await the data_feedback response."""
+        return await self._local.get_head_current(timeout)
+
+    async def get_speed(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request current speed telemetry and await the data_feedback response."""
+        return await self._local.get_speed(timeout)
+
+    async def get_odometer(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request odometer data and await the data_feedback response."""
+        return await self._local.get_odometer(timeout)
+
+    async def get_product_code(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Request the product code and await the data_feedback response."""
+        return await self._local.get_product_code(timeout)
+
+    async def set_charge_limit(self, min_pct: int, max_pct: int) -> None:
+        """Set battery charge limits."""
+        await self._local.set_charge_limit(min_pct, max_pct)
+
+    async def set_turn_type(self, turn_type: int) -> None:
+        """Set the turning behaviour type."""
+        await self._local.set_turn_type(turn_type)
+
+    # -- Motor & mechanical --
+
+    async def set_motor_protect(self, state: int) -> None:
+        """Enable or disable motor protection mode."""
+        await self._local.set_motor_protect(state)
+
+    async def set_trimmer(self, state: int) -> None:
+        """Enable or disable the trimmer."""
+        await self._local.set_trimmer(state)
+
+    # -- Blowing / edge / smart features --
+
+    async def set_edge_blowing(self, state: int) -> None:
+        """Enable or disable edge blowing."""
+        await self._local.set_edge_blowing(state)
+
+    async def set_smart_blowing(self, state: int) -> None:
+        """Enable or disable smart blowing."""
+        await self._local.set_smart_blowing(state)
+
+    async def set_heating_film(self, state: int) -> None:
+        """Enable or disable heating film (anti-ice)."""
+        await self._local.set_heating_film(state)
+
+    async def set_module_lock(self, state: int) -> None:
+        """Lock or unlock an accessory module."""
+        await self._local.set_module_lock(state)
+
+    # -- Autonomous modes --
+
+    async def set_follow_mode(self, state: int) -> None:
+        """Enable or disable follow mode."""
+        await self._local.set_follow_mode(state)
+
+    async def set_draw_mode(self, state: int) -> None:
+        """Enable or disable draw/mapping mode."""
+        await self._local.set_draw_mode(state)
+
+    # -- OTA / firmware updates --
+
+    async def set_auto_update(self, state: int) -> None:
+        """Enable or disable automatic firmware (Greengrass) updates."""
+        await self._local.set_auto_update(state)
+
+    async def set_camera_ota(self, state: int) -> None:
+        """Enable or disable IP camera OTA updates."""
+        await self._local.set_camera_ota(state)
+
+    # -- Vision / recording --
+
+    async def set_smart_vision(self, state: int) -> None:
+        """Enable or disable smart vision processing."""
+        await self._local.set_smart_vision(state)
+
+    async def set_video_record(self, state: int) -> None:
+        """Enable or disable video recording."""
+        await self._local.set_video_record(state)
+
+    # -- Safety / fencing --
+
+    async def set_child_lock(self, state: int) -> None:
+        """Enable or disable the child lock."""
+        await self._local.set_child_lock(state)
+
+    async def set_geo_fence(self, state: int) -> None:
+        """Enable or disable geo-fencing."""
+        await self._local.set_geo_fence(state)
+
+    async def set_elec_fence(self, state: int) -> None:
+        """Enable or disable the electric fence."""
+        await self._local.set_elec_fence(state)
+
+    async def set_ngz_edge(self, state: int) -> None:
+        """Enable or disable NGZ edge enforcement."""
+        await self._local.set_ngz_edge(state)
+
+    # -- Manual drive extras --
+
+    async def set_velocity_manual(self, linear: float, angular: float) -> None:
+        """Send a velocity command in manual drive mode."""
+        await self._local.set_velocity_manual(linear, angular)
+
+    async def set_sound_param(self, volume: int, enabled: int) -> None:
+        """Set sound volume and enable/disable audio output."""
+        await self._local.set_sound_param(volume, enabled)
+
+    # -- Map management (destructive) --
+
+    async def erase_map(self, confirm: bool = False) -> None:
+        """Erase the robot's stored map. Pass confirm=True to proceed (destructive)."""
+        await self._local.erase_map(confirm=confirm)
+
+    async def map_recovery(self, map_id: str, confirm: bool = False) -> None:
+        """Restore a map from backup. Pass confirm=True to proceed (destructive)."""
+        await self._local.map_recovery(map_id, confirm=confirm)
+
+    async def save_current_map(self) -> None:
+        """Save the robot's current map state."""
+        await self._local.save_current_map()
+
+    async def save_map_backup_list(self, timeout: float = 5.0) -> dict[str, Any]:
+        """Save map backup and retrieve all map backup names and IDs."""
+        return await self._local.save_map_backup_list(timeout)
+
     # ------------------------------------------------------------------
     # Plan management (delegated to YarboLocalClient)
     # ------------------------------------------------------------------
@@ -342,9 +636,9 @@ class YarboClient:
         """Set snow push direction (snow blower head only)."""
         return await self._local.push_snow_dir(direction=direction)
 
-    async def set_chute_steering_work(self, state: int) -> None:
-        """Enable or disable chute auto-steering (snow blower head only)."""
-        return await self._local.set_chute_steering_work(state=state)
+    async def set_chute_steering_work(self, angle: int) -> None:
+        """Set the chute steering angle during work (snow blower head only)."""
+        return await self._local.set_chute_steering_work(state=angle)
 
     # ------------------------------------------------------------------
     # Camera commands (delegated to YarboLocalClient)
