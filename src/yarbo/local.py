@@ -1579,6 +1579,134 @@ class YarboLocalClient:
         )
 
     # ------------------------------------------------------------------
+    # Camera commands
+    # ------------------------------------------------------------------
+
+    async def check_camera_status(self) -> YarboCommandResult:
+        """Request the current camera status from the robot.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("check_camera_status", {})
+
+    async def camera_calibration(self) -> YarboCommandResult:
+        """Trigger camera calibration on the robot.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("camera_calibration", {})
+
+    # ------------------------------------------------------------------
+    # Firmware update commands
+    # ------------------------------------------------------------------
+
+    async def firmware_update_now(self, *, confirm: bool = False) -> YarboCommandResult:
+        """Trigger an immediate firmware update.
+
+        .. warning::
+            **Destructive operation.** This reboots the robot and applies the
+            pending firmware update immediately, interrupting any active plan.
+            Pass ``confirm=True`` to confirm the intent and execute.
+
+        Args:
+            confirm: Must be ``True`` to execute. Prevents accidental invocation.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            ValueError:        If ``confirm`` is not ``True``.
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        if not confirm:
+            raise ValueError(
+                "firmware_update_now() is a destructive operation that reboots the robot. "
+                "Pass confirm=True to proceed."
+            )
+        await self._ensure_controller()
+        return await self._publish_and_wait("firmware_update_now", {})
+
+    async def firmware_update_tonight(self) -> YarboCommandResult:
+        """Schedule a firmware update to run tonight (during low-activity hours).
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("firmware_update_tonight", {})
+
+    async def firmware_update_later(self) -> YarboCommandResult:
+        """Defer a pending firmware update to a later, unspecified time.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("firmware_update_later", {})
+
+    # ------------------------------------------------------------------
+    # Wi-Fi management
+    # ------------------------------------------------------------------
+
+    async def get_saved_wifi_list(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> dict[str, Any]:
+        """Fetch the list of saved Wi-Fi networks from the robot.
+
+        Returns the ``data`` field of the ``data_feedback`` response, which
+        contains the network list as observed in protocol documentation.
+
+        Args:
+            timeout: Maximum wait time in seconds (default 5.0).
+
+        Returns:
+            Dict containing the Wi-Fi list (empty dict on timeout).
+        """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish("get_saved_wifi_list", {})
+        except Exception:
+            self._transport.release_queue(wait_queue)
+            raise
+        msg = await self._transport.wait_for_message(
+            timeout=timeout,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            command_name="get_saved_wifi_list",
+            _queue=wait_queue,
+        )
+        if msg is None:
+            return {}
+        data = msg.get("data", {}) or {}
+        return data if isinstance(data, dict) else {"data": data}
+
+    # ------------------------------------------------------------------
+    # Recording
+    # ------------------------------------------------------------------
+
+    async def bag_record(self, enabled: bool) -> None:
+        """Start or stop bag recording on the robot.
+
+        Args:
+            enabled: ``True`` to start recording, ``False`` to stop.
+        """
+        await self._ensure_controller()
+        await self._transport.publish("bag_record", {"state": 1 if enabled else 0})
+
+    # ------------------------------------------------------------------
     # Sync wrapper
     # ------------------------------------------------------------------
 
