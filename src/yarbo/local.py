@@ -86,10 +86,13 @@ class YarboLocalClient:
         auto_controller: If ``True`` (default), automatically send
                          ``get_controller`` before the first action command.
         mqtt_log_path:  If set, append every raw MQTT message (topic + payload JSON) to this file.
-        debug:          If ``True``, print every MQTT message sent/received to stderr (human-readable).
-        debug_raw:      If ``True`` and debug is on, print one-line JSON per message (no formatting).
-        mqtt_capture_max: If > 0, keep the last N messages in a buffer; use :meth:`get_captured_mqtt`
-                         to retrieve them (e.g. for sending to GlitchTip via ``report_mqtt_dump_to_glitchtip``).
+        debug:          If ``True``, print every MQTT message sent/received to stderr
+                         (human-readable).
+        debug_raw:      If ``True`` and debug is on, print one-line JSON per message
+                         (no formatting).
+        mqtt_capture_max: If > 0, keep the last N messages in a buffer;
+                         use :meth:`get_captured_mqtt` to retrieve them
+                         (e.g. for ``report_mqtt_dump_to_glitchtip``).
     """
 
     def __init__(

@@ -28,6 +28,7 @@ import copy
 import json
 import logging
 from pathlib import Path
+import sys
 import threading
 import time
 from typing import TYPE_CHECKING, Any, cast
@@ -287,13 +288,13 @@ class MqttTransport:
 
     def _debug_print(self, envelope: dict[str, Any], prefix: str) -> None:
         """Print one MQTT envelope to stderr (human-readable or raw)."""
-        import sys
-
         topic = envelope.get("topic", "")
         payload = envelope.get("payload", {})
         with self._mqtt_log_lock:
             if self._debug_raw:
-                line = json.dumps({"direction": envelope.get("direction", "?"), "topic": topic, "payload": payload}, ensure_ascii=False) + "\n"
+                line = json.dumps(
+                    {"direction": envelope.get("direction", "?"), "topic": topic,
+                     "payload": payload}, ensure_ascii=False) + "\n"
                 sys.stderr.write(line)
             else:
                 sys.stderr.write(f"\n--- MQTT {prefix} ---\ntopic: {topic}\npayload:\n")
@@ -518,7 +519,11 @@ class MqttTransport:
                 msg.topic,
                 str(payload)[:160],
             )
-            capture_envelope = {"direction": "received", "topic": getattr(msg, "topic", ""), "payload": payload}
+            capture_envelope = {
+                "direction": "received",
+                "topic": getattr(msg, "topic", ""),
+                "payload": payload,
+            }
             self._maybe_capture(capture_envelope)
             if self._debug:
                 self._debug_print(capture_envelope, "←")

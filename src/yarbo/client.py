@@ -33,7 +33,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from .cloud import YarboCloudClient
-from .const import LOCAL_BROKER_DEFAULT, LOCAL_PORT
+from .const import LOCAL_PORT
 from .local import YarboLocalClient, _SyncYarboLocalClient
 
 if TYPE_CHECKING:
