@@ -603,4 +603,3 @@ class TestMqttTlsSecurity:
             assert kwargs.get("cert_reqs") != ssl.CERT_NONE, (
                 "CERT_NONE must not be passed as cert_reqs"
             )
-
