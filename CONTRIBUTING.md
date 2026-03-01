@@ -1,7 +1,7 @@
 # Contributing to python-yarbo
 
 Thanks for your interest in contributing! python-yarbo is a community library
-built on reverse-engineered protocol knowledge — every contribution matters.
+built on community protocol documentation — every contribution matters.
 
 ## Table of Contents
 
@@ -149,13 +149,13 @@ pytest --cov=yarbo --cov-report=term-missing tests/
 
 ## Protocol Knowledge
 
-python-yarbo is built on reverse-engineered protocol knowledge. If you discover
+python-yarbo is a community project. If you discover
 new commands, topics, or payload formats, please:
 
 1. Document them in the related issue or PR
 2. Add them to `src/yarbo/const.py` (topics) or as methods on the client
-3. Reference the source of discovery (packet capture, APK analysis, etc.)
-4. Cross-reference with `yarbo-reversing/docs/COMMAND_CATALOGUE.md`
+3. Reference the source of discovery (hardware testing, protocol observation, etc.)
+4. Cross-reference with existing protocol documentation
 
 ### Key protocol facts
 
@@ -165,4 +165,4 @@ new commands, topics, or payload formats, please:
 - Light keys: `led_head`, `led_left_w`, `led_right_w`, `body_left_r`, `body_right_r`, `tail_left_r`, `tail_right_r`
 - Values are integers 0–255, **not** booleans
 
-See [`yarbo-reversing`](https://github.com/markus-lassfolk/yarbo-reversing) for full protocol docs.
+See [protocol documentation](docs/index.md) for full protocol docs.

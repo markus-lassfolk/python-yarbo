@@ -9,7 +9,7 @@ Prerequisites:
 - The robot's EMQX broker IP must be known (use :func:`yarbo.discover` or set explicitly).
 - ``paho-mqtt`` must be installed: ``pip install 'python-yarbo'``.
 
-Protocol notes (from live captures):
+Protocol notes (from hardware testing):
 - All MQTT payloads are zlib-compressed JSON (see ``_codec``).
 - ``get_controller`` MUST be sent before action commands (e.g. light_ctrl).
 - Topics: ``snowbot/{SN}/app/{cmd}`` (publish) and
@@ -24,10 +24,7 @@ Transport limitations (NOT YET IMPLEMENTED):
 - This module is MQTT-only. Both unimplemented transports are TODO items.
 
 References:
-    yarbo-reversing/scripts/local_ctrl.py — working reference implementation
-    yarbo-reversing/docs/COMMAND_CATALOGUE.md — full command catalogue
-    yarbo-reversing/docs/LIGHT_CTRL_PROTOCOL.md — light control protocol
-    yarbo-reversing/docs/MQTT_PROTOCOL.md — protocol reference
+    Protocol documentation (command catalogue, light control protocol, MQTT protocol reference)
 """
 
 from __future__ import annotations
@@ -335,7 +332,7 @@ class YarboLocalClient:
             vel: Chute velocity / direction integer. Positive = right, negative = left.
 
         Reference:
-            yarbo-reversing/docs/LIGHT_CTRL_PROTOCOL.md#cmd_chute
+            Protocol documentation (light control protocol, cmd_chute section)
         """
         await self._ensure_controller()
         await self._transport.publish("cmd_chute", {"vel": vel})
@@ -435,7 +432,7 @@ class YarboLocalClient:
     # Plan management
     # ------------------------------------------------------------------
 
-    async def start_plan(self, plan_id: str) -> YarboCommandResult:
+    async def start_plan(self, plan_id: str, percent: int = 100) -> YarboCommandResult:
         """Start the plan identified by *plan_id*.
 
         Args:
@@ -448,7 +445,7 @@ class YarboLocalClient:
             YarboTimeoutError: If no acknowledgement is received.
         """
         await self._ensure_controller()
-        return await self._publish_and_wait("start_plan", {"planId": plan_id})
+        return await self._publish_and_wait("start_plan", {"planId": plan_id, "percent": percent})
 
     async def stop_plan(self) -> YarboCommandResult:
         """Stop the currently running plan.
@@ -781,6 +778,100 @@ class YarboLocalClient:
             "enable_self_order": enable_self_order,
         }
         return await self._publish_and_wait("save_plan", payload)
+
+
+    # ------------------------------------------------------------------
+    # System control
+    # ------------------------------------------------------------------
+
+    async def shutdown(self) -> YarboCommandResult:
+        """Shut down the robot.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("shutdown", {})
+
+    async def restart_container(self) -> YarboCommandResult:
+        """Restart the software container on the robot.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("restart_container", {})
+
+    # ------------------------------------------------------------------
+    # Area management
+    # ------------------------------------------------------------------
+
+    async def read_clean_area(self) -> YarboCommandResult:
+        """Request the list of saved clean areas from the robot.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("read_clean_area", {})
+
+    # ------------------------------------------------------------------
+    # Safety & detection
+    # ------------------------------------------------------------------
+
+    async def set_person_detect(self, enabled: bool) -> YarboCommandResult:
+        """Enable or disable person detection.
+
+        Sends ``{"disable": not enabled}`` to the robot. Note the inversion:
+        the wire protocol uses a *disable* flag.
+
+        .. note::
+            Some firmware versions may additionally require a ``"key"`` field
+            in the payload. If detection toggling has no effect, consult the
+            firmware changelog and add the ``"key"`` field accordingly.
+
+        Args:
+            enabled: ``True`` to enable person detection, ``False`` to disable.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("set_person_detect", {"disable": not enabled})
+
+    async def set_ignore_obstacles(self, state: bool) -> YarboCommandResult:
+        """Enable or disable obstacle detection bypass.
+
+        .. warning::
+            **Safety hazard.** Disabling obstacle detection allows the robot
+            to continue moving even when obstacles are detected. Only use this
+            in controlled environments where you are certain there are no
+            people, animals, or objects in the robot's path.
+
+        Args:
+            state: ``True`` to ignore obstacles (bypass detection),
+                   ``False`` to restore normal obstacle detection.
+
+        Returns:
+            :class:`~yarbo.models.YarboCommandResult` on success.
+
+        Raises:
+            YarboTimeoutError: If no acknowledgement is received.
+        """
+        await self._ensure_controller()
+        return await self._publish_and_wait("ignore_obstacles", {"state": 1 if state else 0})
 
     # ------------------------------------------------------------------
     # Raw publish (escape hatch)

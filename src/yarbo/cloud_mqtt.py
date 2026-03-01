@@ -10,7 +10,7 @@ Auth:     Username / password (Tencent TDMQ credentials).
 Transport: TLS 1.2+, server certificate validated when ``tls_ca_certs`` is supplied.
 
 References:
-    yarbo-reversing/docs/MQTT_PROTOCOL.md — protocol reference
+    Protocol documentation (MQTT protocol reference)
     Tencent TDMQ MQTT documentation — broker configuration
 """
 

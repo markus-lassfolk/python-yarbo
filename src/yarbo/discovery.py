@@ -7,9 +7,7 @@ Locally administered MAC (bit 1 of first octet set) → DC; globally administere
 DC is recommended when both are present (stays connected via HaLow when Rover leaves WiFi).
 
 Reference:
-    yarbo-reversing/yarbo/mqtt.py — MQTT_BROKER constant
-    yarbo-reversing/scripts/local_ctrl.py — DEFAULT_BROKER
-    docs/BROKER_ROLES.md — MAC↔role reference
+    Protocol documentation (MQTT broker details and MAC/role reference)
 """
 
 from __future__ import annotations

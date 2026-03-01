@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Python library for **local and cloud control** of [Yarbo](https://yarbo.com/) robot
-mowers and snow blowers — built from reverse-engineered protocol knowledge.
+mowers and snow blowers — a community-developed project.
 
 > **Status**: Alpha (0.1.0) — local MQTT control is functional and confirmed working
 > on hardware. Cloud API is partially functional (JWT auth migration in progress).
@@ -117,7 +117,7 @@ async def main():
     async with YarboCloudClient(
         username="your@email.com",
         password="yourpassword",
-        rsa_key_path="/path/to/rsa_public_key.pem",  # from APK
+        rsa_key_path="/path/to/rsa_public_key.pem",  # see keys/README.md
     ) as client:
         robots = await client.list_robots()
         for robot in robots:
@@ -225,8 +225,7 @@ Recommendations:
 
 ## Protocol Notes
 
-This library was built from reverse-engineering the Yarbo Flutter app and
-live packet captures. Key protocol facts:
+Key protocol facts (community-observed):
 
 - **MQTT broker**: Local EMQX (port 1883). Use `yarbo discover` (scans host networks) or
   `yarbo discover --subnet <CIDR>` to find Rover/DC endpoints; IPs are DHCP-assigned.
@@ -239,7 +238,7 @@ live packet captures. Key protocol facts:
   `BatteryMSG.capacity`, `StateMSG.working_state`, `RTKMSG.heading`,
   `CombinedOdom.x/y/phi`
 - **Not yet implemented**: Local REST API (port 8088) and TCP JSON (port 22220)
-  are documented in `yarbo-reversing` but not implemented here
+  are not yet implemented here
 
 ## Debug and troubleshooting
 
@@ -299,17 +298,13 @@ yarbo status --broker 192.168.1.1 --sn ABC123 --report-mqtt
 
 From Python you can capture and send a dump yourself using `report_mqtt_dump_to_glitchtip` from `yarbo.error_reporting`, and `client.get_captured_mqtt()` when the client was created with `mqtt_capture_max > 0` (see `YarboLocalClient` and `MqttTransport` parameters).
 
-See [`yarbo-reversing`](https://github.com/markus-lassfolk/yarbo-reversing) for:
-- Full [command catalogue](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/COMMAND_CATALOGUE.md)
-- [Light control protocol](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/LIGHT_CTRL_PROTOCOL.md)
-- [API endpoints](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/API_ENDPOINTS.md)
-- [MQTT protocol reference](https://github.com/markus-lassfolk/yarbo-reversing/blob/main/docs/MQTT_PROTOCOL.md)
+See [protocol documentation](docs/index.md) for additional protocol details.
 
 ## Related Projects
 
 | Project | Description |
 |---------|-------------|
-| [`yarbo-reversing`](https://github.com/markus-lassfolk/yarbo-reversing) | Protocol RE: Frida scripts, MITM setup, APK tools |
+| [`home-assistant-yarbo`](https://github.com/markus-lassfolk/home-assistant-yarbo) | Home Assistant integration (coming soon) |
 | [`PSYarbo`](https://github.com/markus-lassfolk/PSYarbo) | PowerShell module (same protocol, same architecture) |
 
 ## License
@@ -318,5 +313,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Disclaimer
 
-This library was built by reverse engineering. It is not affiliated with or endorsed by
-Yarbo. Use at your own risk. Do not expose your robot's MQTT broker to the internet.
+This is a community project, not affiliated with or endorsed by Yarbo. Use at your own risk. Do not expose your robot's MQTT broker to the internet.
