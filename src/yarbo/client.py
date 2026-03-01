@@ -206,7 +206,7 @@ class YarboClient:
 
     async def publish_command(self, cmd: str, payload: dict[str, Any]) -> None:
         """Alias for :meth:`publish_raw` — publish an arbitrary MQTT command to the robot."""
-        await self._local.publish_raw(cmd, payload)
+        await self._local.publish_command(cmd, payload)
 
     # -- Robot control --
 
