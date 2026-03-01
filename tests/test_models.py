@@ -149,7 +149,7 @@ class TestYarboTelemetry:
         d = {"HeadMsg": {"head_type": 1}}
         t = YarboTelemetry.from_dict(d)
         assert t.head_type == 1
-        assert t.head_name == "Mower"
+        assert t.head_name == "SnowBlower"
 
     def test_head_type_none_when_missing(self):
         t = YarboTelemetry.from_dict({"sn": "X1"})
@@ -162,8 +162,13 @@ class TestYarboTelemetry:
             assert t.head_name == ht.name
 
     def test_head_name_unknown_value(self):
+        # 99=Trimmer in corrected wire values; test a truly unknown value
+        t = YarboTelemetry.from_dict({"HeadMsg": {"head_type": 42}})
+        assert t.head_name == "Unknown(42)"
+
+    def test_head_name_trimmer_wire_value(self):
         t = YarboTelemetry.from_dict({"HeadMsg": {"head_type": 99}})
-        assert t.head_name == "Unknown(99)"
+        assert t.head_name == "Trimmer"
 
     def test_activity_state_fields_from_state_msg(self):
         """on_going_planning, on_going_recharging, planning_paused, machine_controller parsed."""
@@ -263,17 +268,19 @@ class TestYarboTelemetryPlanFeedback:
 
 class TestHeadType:
     def test_enum_values(self):
-        assert HeadType.Snow == 0
-        assert HeadType.Mower == 1
-        assert HeadType.MowerPro == 2
-        assert HeadType.Leaf == 3
-        assert HeadType.SAM == 4
-        assert HeadType.Trimmer == 5
-        assert HeadType.NoHead == 6
+        """Wire values match APK _HEAD_TYPE_MAP."""
+        assert HeadType.NoHead == 0
+        assert HeadType.SnowBlower == 1
+        assert HeadType.LeafBlower == 2
+        assert HeadType.LawnMower == 3
+        assert HeadType.SmartCover == 4
+        assert HeadType.LawnMowerPro == 5
+        assert HeadType.Trimmer == 99
 
     def test_from_int(self):
-        assert HeadType(0) is HeadType.Snow
-        assert HeadType(6) is HeadType.NoHead
+        assert HeadType(0) is HeadType.NoHead
+        assert HeadType(1) is HeadType.SnowBlower
+        assert HeadType(99) is HeadType.Trimmer
 
 
 class TestTelemetryEnvelope:

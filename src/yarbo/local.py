@@ -779,7 +779,6 @@ class YarboLocalClient:
         }
         return await self._publish_and_wait("save_plan", payload)
 
-
     # ------------------------------------------------------------------
     # System control
     # ------------------------------------------------------------------
