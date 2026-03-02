@@ -1,4 +1,5 @@
 # Changelog
+- [v2026.3.21](releases/v2026.3.21.md) — Bug fixes: CancelledError handling, Sentry filter
 
 All notable changes to python-yarbo will be documented in this file.
 
