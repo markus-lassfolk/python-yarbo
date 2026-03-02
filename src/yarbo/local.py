@@ -449,7 +449,7 @@ class YarboLocalClient:
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish(cmd, payload)
-        except Exception:
+        except BaseException:
             self._transport.release_queue(wait_queue)
             raise
         msg = await self._transport.wait_for_message(
@@ -548,7 +548,7 @@ class YarboLocalClient:
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish("read_all_schedule", {})
-        except Exception:
+        except BaseException:
             self._transport.release_queue(wait_queue)
             raise
         msg = await self._transport.wait_for_message(
@@ -612,7 +612,7 @@ class YarboLocalClient:
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish("read_all_plan", {})
-        except Exception:
+        except BaseException:
             self._transport.release_queue(wait_queue)
             raise
         msg = await self._transport.wait_for_message(
@@ -727,7 +727,7 @@ class YarboLocalClient:
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish("read_global_params", {})
-        except Exception:
+        except BaseException:
             self._transport.release_queue(wait_queue)
             raise
         msg = await self._transport.wait_for_message(
@@ -772,7 +772,7 @@ class YarboLocalClient:
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish("get_map", {})
-        except Exception:
+        except BaseException:
             self._transport.release_queue(wait_queue)
             raise
         msg = await self._transport.wait_for_message(
@@ -1314,7 +1314,7 @@ class YarboLocalClient:
                 _queue=wait_queue,
             )
             return msg.get("data", {}) or {} if isinstance(msg, dict) else {}
-        except Exception:
+        except BaseException:
             self._transport.release_queue(wait_queue)
             raise
 

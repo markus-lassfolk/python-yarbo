@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 import json
 import time
@@ -879,3 +880,38 @@ class TestHeadValidation:
         await client.connect()
         await client.get_status()
         assert client._last_status is not None
+
+
+# ---------------------------------------------------------------------------
+# Queue release on CancelledError — issue #75
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+class TestQueueReleaseOnCancelledError:
+    """Verify that the pre-registered wait queue is released when CancelledError
+    hits during publish(), i.e. before wait_for_message() can clean it up.
+
+    Regression for issue #75: the previous ``except Exception`` guard silently
+    leaked the queue because CancelledError is a BaseException, not Exception.
+    """
+
+    async def test_list_schedules_releases_queue_on_cancelled_publish(
+        self, mock_transport
+    ):
+        """Queue is released via release_queue() when publish raises CancelledError."""
+        mock_transport.publish = AsyncMock(side_effect=asyncio.CancelledError())
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        with pytest.raises(asyncio.CancelledError):
+            await client.list_schedules()
+        mock_transport.release_queue.assert_called_once()
+
+    async def test_list_plans_releases_queue_on_cancelled_publish(self, mock_transport):
+        """Queue is released via release_queue() when publish raises CancelledError."""
+        mock_transport.publish = AsyncMock(side_effect=asyncio.CancelledError())
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        with pytest.raises(asyncio.CancelledError):
+            await client.list_plans()
+        mock_transport.release_queue.assert_called_once()

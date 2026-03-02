@@ -497,7 +497,11 @@ async def _run_status(args: argparse.Namespace) -> None:
             flush=True,
         )
     async for client, ip in _with_client(args):
-        status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
+        try:
+            status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
+        except (TimeoutError, asyncio.CancelledError):
+            print("Error: timed out waiting for a response from the robot.")
+            sys.exit(1)
         if status:
             sn = args.serial if args.broker and args.serial else client.serial_number
             _print_status(status, ip or args.broker, sn)
@@ -631,7 +635,11 @@ def _print_status(status: Any, ip: str, sn: str) -> None:
 # ----- Commands that use _with_client -----
 async def _run_battery(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
-        status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
+        try:
+            status = await asyncio.wait_for(client.get_status(), timeout=args.timeout)
+        except (TimeoutError, asyncio.CancelledError):
+            print("Error: timed out waiting for a response from the robot.")
+            sys.exit(1)
         print(f"{status.battery}%" if status and status.battery is not None else "?")
         _maybe_report_mqtt(args, client)
         break
@@ -693,7 +701,11 @@ async def _run_return_to_dock(args: argparse.Namespace) -> None:
 
 async def _run_plans(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
-        plans = await asyncio.wait_for(client.list_plans(), timeout=args.timeout)
+        try:
+            plans = await asyncio.wait_for(client.list_plans(), timeout=args.timeout)
+        except (TimeoutError, asyncio.CancelledError):
+            print("Error: timed out waiting for a response from the robot.")
+            sys.exit(1)
         for p in plans:
             print(f"  {p.plan_id}: {p.plan_name}")
         if not plans:
@@ -736,7 +748,11 @@ async def _run_plan_resume(args: argparse.Namespace) -> None:
 
 async def _run_schedules(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
-        schedules = await asyncio.wait_for(client.list_schedules(), timeout=args.timeout)
+        try:
+            schedules = await asyncio.wait_for(client.list_schedules(), timeout=args.timeout)
+        except (TimeoutError, asyncio.CancelledError):
+            print("Error: timed out waiting for a response from the robot.")
+            sys.exit(1)
         for s in schedules:
             print(f"  {s.schedule_id}: {s}")
         if not schedules:
@@ -781,7 +797,11 @@ async def _run_manual_stop(args: argparse.Namespace) -> None:
 
 async def _run_global_params(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
-        params = await asyncio.wait_for(client.get_global_params(), timeout=args.timeout)
+        try:
+            params = await asyncio.wait_for(client.get_global_params(), timeout=args.timeout)
+        except (TimeoutError, asyncio.CancelledError):
+            print("Error: timed out waiting for a response from the robot.")
+            sys.exit(1)
         print(json.dumps(params, indent=2))
         _maybe_report_mqtt(args, client)
         break
@@ -789,7 +809,11 @@ async def _run_global_params(args: argparse.Namespace) -> None:
 
 async def _run_map(args: argparse.Namespace) -> None:
     async for client, _ in _with_client(args):
-        data = await asyncio.wait_for(client.get_map(), timeout=args.timeout)
+        try:
+            data = await asyncio.wait_for(client.get_map(), timeout=args.timeout)
+        except (TimeoutError, asyncio.CancelledError):
+            print("Error: timed out waiting for a response from the robot.")
+            sys.exit(1)
         out = getattr(args, "out", None)
         s = json.dumps(data, indent=2)
         if out:
