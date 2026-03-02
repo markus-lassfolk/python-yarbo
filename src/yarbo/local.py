@@ -233,7 +233,7 @@ class YarboLocalClient:
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish("get_controller", {})
-        except Exception:
+        except BaseException:
             # publish() failed — wait_for_message's finally block never runs, so
             # we must release the pre-registered queue here to prevent a leak.
             self._transport.release_queue(wait_queue)
