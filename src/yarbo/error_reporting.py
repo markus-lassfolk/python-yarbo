@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 # Default DSN (override with YARBO_SENTRY_DSN or SENTRY_DSN).
 _DEFAULT_DSN = "https://c690590f8f664d609f6abe4cb0392d53@glitchtip.lassfolk.cc/2"
 
+# Modules we own — events without any frame from these are dropped.
+_OUR_MODULES: tuple[str, ...] = ("yarbo.",)
+
 # Sensitive-key scrubbing helpers — compiled once at import time.
 _SCRUB_KEY_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential", "key")
 _SCRUB_MSG_KEYWORDS: tuple[str, ...] = ("password", "token", "secret", "credential")
@@ -76,8 +79,8 @@ def init_error_reporting(
         logger.warning("Failed to initialize error reporting: %s", exc)
 
 
-def _scrub_event(event: dict, hint: dict) -> dict:  # type: ignore[type-arg]
-    """Remove sensitive data before sending."""
+def _scrub_event(event: dict, hint: dict) -> dict | None:  # type: ignore[type-arg]
+    """Remove sensitive data before sending, and drop events not from yarbo modules."""
     if "extra" in event:
         for key in list(event["extra"]):
             if any(s in key.lower() for s in _SCRUB_KEY_KEYWORDS):
@@ -89,6 +92,18 @@ def _scrub_event(event: dict, hint: dict) -> dict:  # type: ignore[type-arg]
                 breadcrumb["message"] = _scrub_string(str(breadcrumb["message"]))
             if "data" in breadcrumb and isinstance(breadcrumb["data"], dict):
                 breadcrumb["data"] = _scrub_breadcrumb_data(breadcrumb["data"])
+
+    is_ours = False
+    for entry in event.get("exception", {}).get("values", []):
+        for frame in (entry.get("stacktrace") or {}).get("frames", []):
+            module = frame.get("module", "") or frame.get("filename", "") or ""
+            if any(m in module for m in _OUR_MODULES):
+                is_ours = True
+                break
+        if is_ours:
+            break
+    if not is_ours:
+        return None
 
     return event
 

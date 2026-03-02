@@ -16,9 +16,18 @@ from yarbo.error_reporting import (
 )
 
 
+def _yarbo_frame():
+    """Return a stack frame that looks like it came from a yarbo module."""
+    return {"module": "yarbo.local", "filename": "yarbo/local.py", "lineno": 1}
+
+
 def _make_event(**kwargs):
-    """Build a minimal Sentry event dict."""
-    base = {"extra": {}, "breadcrumbs": {"values": []}}
+    """Build a minimal Sentry event dict with a yarbo stack frame so it passes source filtering."""
+    base: dict = {
+        "extra": {},
+        "breadcrumbs": {"values": []},
+        "exception": {"values": [{"stacktrace": {"frames": [_yarbo_frame()]}}]},
+    }
     base.update(kwargs)
     return base
 
@@ -80,10 +89,27 @@ class TestScrubEvent:
         assert result["breadcrumbs"]["values"][0]["message"] == "[REDACTED]"
 
     def test_no_extra_or_breadcrumbs(self):
-        """Events without extra/breadcrumbs should pass through unchanged."""
-        event: dict = {}
+        """Events with a yarbo frame but no extra/breadcrumbs pass through."""
+        event = _make_event()
+        event.pop("extra")
+        event.pop("breadcrumbs")
         result = _scrub_event(event, {})
-        assert result == {}
+        assert result is not None
+
+    def test_non_yarbo_event_dropped(self):
+        """Events with no yarbo frame in the stack are dropped (return None)."""
+        event: dict = {
+            "exception": {
+                "values": [
+                    {"stacktrace": {"frames": [{"module": "homeassistant.core", "lineno": 1}]}}
+                ]
+            }
+        }
+        assert _scrub_event(event, {}) is None
+
+    def test_no_exception_key_dropped(self):
+        """Events with no exception block at all are dropped."""
+        assert _scrub_event({}, {}) is None
 
 
 class TestInitErrorReporting:
