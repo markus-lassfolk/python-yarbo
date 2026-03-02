@@ -362,6 +362,7 @@ class TestYarboLocalClientScheduleManagement:
         mock_transport.wait_for_message = AsyncMock(return_value=None)
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
+        client._controller_acquired = True  # skip get_controller so we only test timeout path
         result = await client.list_schedules(timeout=0.1)
         assert result == []
 
@@ -379,6 +380,7 @@ class TestYarboLocalClientScheduleManagement:
         )
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
+        client._controller_acquired = True  # skip get_controller so mock returns schedule list
         result = await client.list_schedules()
         assert len(result) == 2
         assert isinstance(result[0], YarboSchedule)
@@ -426,6 +428,7 @@ class TestYarboLocalClientPlanCRUD:
         mock_transport.wait_for_message = AsyncMock(return_value=None)
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
+        client._controller_acquired = True  # skip get_controller so we only test timeout path
         result = await client.list_plans(timeout=0.1)
         assert result == []
 
@@ -443,6 +446,7 @@ class TestYarboLocalClientPlanCRUD:
         )
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
+        client._controller_acquired = True  # skip get_controller so mock returns plan list
         result = await client.list_plans()
         assert len(result) == 2
         assert isinstance(result[0], YarboPlan)
@@ -554,6 +558,7 @@ class TestYarboLocalClientGlobalParams:
         )
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
+        client._controller_acquired = True  # skip get_controller so mock returns params
         result = await client.get_global_params()
         assert result["speed"] == pytest.approx(0.8)
         assert result["perimeterLaps"] == 2
@@ -564,6 +569,7 @@ class TestYarboLocalClientGlobalParams:
         mock_transport.wait_for_message = AsyncMock(return_value=None)
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
+        client._controller_acquired = True  # skip get_controller so we only test timeout path
         result = await client.get_global_params(timeout=0.1)
         assert result == {}
 
@@ -596,6 +602,7 @@ class TestYarboLocalClientMap:
         )
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
+        client._controller_acquired = True  # skip get_controller so mock returns map
         result = await client.get_map()
         assert "areas" in result
         assert result["areas"][0]["id"] == "a1"
@@ -606,6 +613,7 @@ class TestYarboLocalClientMap:
         mock_transport.wait_for_message = AsyncMock(return_value=None)
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
+        client._controller_acquired = True  # skip get_controller so we only test timeout path
         result = await client.get_map(timeout=0.1)
         assert result == {}
 

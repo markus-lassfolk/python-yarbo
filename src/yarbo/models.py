@@ -1016,8 +1016,10 @@ class YarboPlan:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> YarboPlan:
         params_dict: dict[str, Any] = d.get("params", {}) or {}
+        raw_id = d.get("planId", d.get("id", ""))
+        plan_id = str(raw_id) if raw_id != "" else ""
         return cls(
-            plan_id=d.get("planId", d.get("id", "")),
+            plan_id=plan_id,
             plan_name=d.get("planName", d.get("name", "")),
             area_id=d.get("areaId", ""),
             area_ids=d.get("areaIds", []),
@@ -1059,8 +1061,10 @@ class YarboSchedule:
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> YarboSchedule:
+        raw_schedule_id = d.get("scheduleId", d.get("id", ""))
+        schedule_id = str(raw_schedule_id) if raw_schedule_id != "" else ""
         return cls(
-            schedule_id=d.get("scheduleId", d.get("id", "")),
+            schedule_id=schedule_id,
             plan_id=d.get("planId", ""),
             enabled=bool(d.get("enabled", True)),
             schedule_type=d.get("scheduleType", "weekly"),

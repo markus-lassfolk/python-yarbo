@@ -29,7 +29,7 @@ from pathlib import Path
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Callable, cast
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable
@@ -365,6 +365,7 @@ class MqttTransport:
         command_name: str | None = None,
         _queue: asyncio.Queue[dict[str, Any]] | None = None,
         _return_envelope: bool = False,
+        accept_if: Callable[[dict[str, Any]], bool] | None = None,
     ) -> dict[str, Any] | None:
         """
         Wait for the next message matching a specific feedback topic leaf.
@@ -387,6 +388,10 @@ class MqttTransport:
                            be deregistered on return.
             _return_envelope: If ``True``, return the full envelope dict instead
                            of just the payload.
+            accept_if:     Optional predicate(payload). When set, accept the
+                           message if it returns True even when command_name
+                           does not match (e.g. for firmware that echoes a
+                           different topic for the same response).
 
         Returns:
             Decoded message payload dict (or envelope dict if ``_return_envelope``
@@ -410,8 +415,10 @@ class MqttTransport:
                     return None
                 if Topic.leaf(envelope.get("topic", "")) != feedback_leaf:
                     continue
-                payload_topic = envelope.get("payload", {}).get("topic")
-                if command_name is not None and payload_topic != command_name:
+                payload = envelope.get("payload", {})
+                payload_topic = payload.get("topic")
+                name_matches = command_name is None or payload_topic == command_name
+                if not name_matches and not (accept_if and accept_if(payload)):
                     continue
                 if _return_envelope:
                     return envelope

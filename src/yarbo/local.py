@@ -64,6 +64,67 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _payload_has_plan_list(payload: dict[str, Any]) -> bool:
+    """True if this data_feedback payload looks like a plan list response."""
+    data = payload.get("data")
+    if isinstance(data, list):
+        return True
+    if isinstance(data, dict):
+        for key in ("planList", "plans", "plan_list", "data"):
+            if isinstance(data.get(key), list):
+                return True
+    return False
+
+
+def _payload_has_schedule_list(payload: dict[str, Any]) -> bool:
+    """True if this data_feedback payload looks like a schedule list response."""
+    data = payload.get("data")
+    if isinstance(data, list):
+        return True
+    if isinstance(data, dict):
+        for key in ("scheduleList", "schedules", "schedule_list", "data"):
+            if isinstance(data.get(key), list):
+                return True
+    return False
+
+
+def _extract_plan_list(
+    data: dict[str, Any] | list[Any] | None, msg: dict[str, Any]
+) -> list[Any]:
+    """Extract plan list from data_feedback payload; support multiple firmware shapes."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    for key in ("planList", "plans", "plan_list", "data"):
+        raw = data.get(key)
+        if isinstance(raw, list):
+            return raw
+    # Some firmware may put the array directly in "data"
+    payload_list = msg.get("data")
+    if isinstance(payload_list, list):
+        return payload_list
+    return []
+
+
+def _extract_schedule_list(
+    data: dict[str, Any] | list[Any] | None, msg: dict[str, Any]
+) -> list[Any]:
+    """Extract schedule list from data_feedback payload; support multiple firmware shapes."""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    for key in ("scheduleList", "schedules", "schedule_list", "data"):
+        raw = data.get(key)
+        if isinstance(raw, list):
+            return raw
+    payload_list = msg.get("data")
+    if isinstance(payload_list, list):
+        return payload_list
+    return []
+
+
 class YarboLocalClient:
     """
     Local MQTT client for anonymous control of a Yarbo robot.
@@ -537,6 +598,7 @@ class YarboLocalClient:
         """Fetch the list of saved schedules from the robot.
 
         Sends ``read_all_schedule`` and waits for the ``data_feedback`` response.
+        Acquires controller first so the robot responds (required by firmware).
 
         Args:
             timeout: Maximum wait time in seconds (default 5.0).
@@ -545,6 +607,7 @@ class YarboLocalClient:
             List of :class:`~yarbo.models.YarboSchedule` objects.
             Returns an empty list on timeout.
         """
+        await self._ensure_controller()
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish("read_all_schedule", {})
@@ -556,11 +619,15 @@ class YarboLocalClient:
             feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
             command_name="read_all_schedule",
             _queue=wait_queue,
+            accept_if=_payload_has_schedule_list,
         )
         if msg is None:
+            logger.debug("list_schedules: no data_feedback received within timeout")
             return []
-        data: dict[str, Any] = msg.get("data", {}) or {}
-        schedules_raw: list[Any] = data.get("scheduleList", data.get("schedules", []))
+        data: dict[str, Any] | list[Any] | None = msg.get("data")
+        if data is None:
+            data = {}
+        schedules_raw: list[Any] = _extract_schedule_list(data, msg)
         return [YarboSchedule.from_dict(s) for s in schedules_raw]
 
     async def set_schedule(self, schedule: YarboSchedule) -> YarboCommandResult:
@@ -601,6 +668,7 @@ class YarboLocalClient:
         """Fetch the list of saved plans from the robot.
 
         Sends ``read_all_plan`` and waits for the ``data_feedback`` response.
+        Acquires controller first so the robot responds (required by firmware).
 
         Args:
             timeout: Maximum wait time in seconds (default 5.0).
@@ -609,6 +677,7 @@ class YarboLocalClient:
             List of :class:`~yarbo.models.YarboPlan` objects.
             Returns an empty list on timeout.
         """
+        await self._ensure_controller()
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish("read_all_plan", {})
@@ -620,11 +689,15 @@ class YarboLocalClient:
             feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
             command_name="read_all_plan",
             _queue=wait_queue,
+            accept_if=_payload_has_plan_list,
         )
         if msg is None:
+            logger.debug("list_plans: no data_feedback received within timeout")
             return []
-        data: dict[str, Any] = msg.get("data", {}) or {}
-        plans_raw: list[Any] = data.get("planList", data.get("plans", []))
+        data: dict[str, Any] | list[Any] | None = msg.get("data")
+        if data is None:
+            data = {}
+        plans_raw: list[Any] = _extract_plan_list(data, msg)
         return [YarboPlan.from_dict(p) for p in plans_raw]
 
     async def delete_plan(self, plan_id: str, *, confirm: bool = False) -> YarboCommandResult:
@@ -724,6 +797,7 @@ class YarboLocalClient:
             Dict of global parameters as returned by the robot.
             Returns an empty dict on timeout.
         """
+        await self._ensure_controller()
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish("read_global_params", {})
@@ -769,6 +843,7 @@ class YarboLocalClient:
             Map data dict as returned by the robot.
             Returns an empty dict on timeout.
         """
+        await self._ensure_controller()
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish("get_map", {})
