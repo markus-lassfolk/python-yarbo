@@ -29,7 +29,7 @@ from pathlib import Path
 import sys
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Callable, cast
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator, Callable

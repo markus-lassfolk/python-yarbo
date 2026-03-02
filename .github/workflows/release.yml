@@ -86,9 +86,9 @@ jobs:
         id: changelog
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          NOTES=$(awk "/^## \[$VERSION\]/{flag=1;next} /^## \[/{flag=0} flag" CHANGELOG.md)
+          NOTES=$(awk "/^## \[$VERSION\]/{flag=1;next} /^## \[/{flag=0} flag" docs/CHANGELOG.md)
           if [ -z "$NOTES" ]; then
-            NOTES="See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for details."
+            NOTES="See [docs/CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/docs/CHANGELOG.md) for details."
           fi
           echo "$NOTES" > release-notes.txt
           cat release-notes.txt

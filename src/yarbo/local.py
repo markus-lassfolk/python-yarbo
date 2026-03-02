@@ -88,9 +88,7 @@ def _payload_has_schedule_list(payload: dict[str, Any]) -> bool:
     return False
 
 
-def _extract_plan_list(
-    data: dict[str, Any] | list[Any] | None, msg: dict[str, Any]
-) -> list[Any]:
+def _extract_plan_list(data: dict[str, Any] | list[Any] | None, msg: dict[str, Any]) -> list[Any]:
     """Extract plan list from data_feedback payload; support multiple firmware shapes."""
     if data is None:
         return []
