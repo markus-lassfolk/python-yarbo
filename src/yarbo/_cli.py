@@ -20,7 +20,7 @@ import sys
 from typing import TYPE_CHECKING, Any
 
 from yarbo.discovery import connection_order, discover
-from yarbo.error_reporting import report_mqtt_dump_to_glitchtip
+from yarbo.error_reporting import init_error_reporting, report_mqtt_dump_to_glitchtip
 from yarbo.exceptions import YarboError
 from yarbo.local import YarboLocalClient
 
@@ -417,6 +417,8 @@ def _main() -> None:  # noqa: PLR0915
         logging.basicConfig(level=logging.DEBUG, format="%(name)s %(levelname)s %(message)s")
     else:
         logging.basicConfig(level=logging.WARNING, format="%(message)s")
+
+    init_error_reporting()
 
     handlers = {
         "discover": _run_discover,

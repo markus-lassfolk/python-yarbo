@@ -139,6 +139,3 @@ __all__ = [  # noqa: RUF022 — grouped by category, alphabetical within each
     "YarboTimeoutError",
     "YarboTokenExpiredError",
 ]
-
-# Opt-in error reporting: enabled if YARBO_SENTRY_DSN or SENTRY_DSN env var is set.
-init_error_reporting()
