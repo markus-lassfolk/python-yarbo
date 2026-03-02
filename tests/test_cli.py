@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,7 +13,12 @@ from yarbo._cli import (
     _apply_debug_env,
     _maybe_report_mqtt,
     _mqtt_capture_max,
+    _run_battery,
     _run_discover,
+    _run_global_params,
+    _run_map,
+    _run_plans,
+    _run_schedules,
     _run_status,
     _with_client,
 )
@@ -491,3 +497,132 @@ class TestApplyDebugEnv:
         monkeypatch.setenv("YARBO_DEBUG", "")
         _apply_debug_env(args)
         assert args.debug is False
+
+
+# ---------------------------------------------------------------------------
+# Timeout / CancelledError handling — issue #75
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_client_raising(exc_factory):
+    """Return a mock client whose wait-for methods raise *exc_factory()*.
+
+    The client uses AsyncMock so that connect/disconnect are awaitable and
+    list_schedules / list_plans / get_status / get_global_params / get_map
+    raise the given exception to simulate a nested-wait_for timeout bubbling
+    up as CancelledError or TimeoutError.
+    """
+    client = MagicMock()
+    client.connect = AsyncMock()
+    client.disconnect = AsyncMock()
+    client.get_status = AsyncMock(side_effect=exc_factory)
+    client.list_schedules = AsyncMock(side_effect=exc_factory)
+    client.list_plans = AsyncMock(side_effect=exc_factory)
+    client.get_global_params = AsyncMock(side_effect=exc_factory)
+    client.get_map = AsyncMock(side_effect=exc_factory)
+    return client
+
+
+@pytest.mark.asyncio
+class TestTimeoutHandling:
+    """Verify all _run_* wrappers handle TimeoutError and CancelledError gracefully.
+
+    Regression for issue #75: nested asyncio.wait_for on Python 3.12 can
+    surface an inner CancelledError at the outer level instead of TimeoutError.
+    """
+
+    @pytest.mark.parametrize("exc_factory", [asyncio.CancelledError, TimeoutError])
+    async def test_run_schedules_exits_on_timeout(self, capsys, exc_factory):
+        """_run_schedules exits with code 1 and prints a friendly message."""
+        client = _make_mock_client_raising(exc_factory)
+        args = _make_args(broker="192.0.2.1", serial="SN1")
+
+        with (
+            patch("yarbo._cli.YarboLocalClient", return_value=client),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            await _run_schedules(args)
+
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "timed out" in out.lower() or "error" in out.lower()
+
+    @pytest.mark.parametrize("exc_factory", [asyncio.CancelledError, TimeoutError])
+    async def test_run_plans_exits_on_timeout(self, capsys, exc_factory):
+        """_run_plans exits with code 1 and prints a friendly message."""
+        client = _make_mock_client_raising(exc_factory)
+        args = _make_args(broker="192.0.2.1", serial="SN1")
+
+        with (
+            patch("yarbo._cli.YarboLocalClient", return_value=client),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            await _run_plans(args)
+
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "timed out" in out.lower() or "error" in out.lower()
+
+    @pytest.mark.parametrize("exc_factory", [asyncio.CancelledError, TimeoutError])
+    async def test_run_status_exits_on_timeout(self, capsys, exc_factory):
+        """_run_status exits with code 1 and prints a friendly message."""
+        client = _make_mock_client_raising(exc_factory)
+        args = _make_args(broker="192.0.2.1", serial="SN1")
+
+        with (
+            patch("yarbo._cli.YarboLocalClient", return_value=client),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            await _run_status(args)
+
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "timed out" in out.lower() or "error" in out.lower()
+
+    @pytest.mark.parametrize("exc_factory", [asyncio.CancelledError, TimeoutError])
+    async def test_run_battery_exits_on_timeout(self, capsys, exc_factory):
+        """_run_battery exits with code 1 and prints a friendly message."""
+        client = _make_mock_client_raising(exc_factory)
+        args = _make_args(broker="192.0.2.1", serial="SN1")
+
+        with (
+            patch("yarbo._cli.YarboLocalClient", return_value=client),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            await _run_battery(args)
+
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "timed out" in out.lower() or "error" in out.lower()
+
+    @pytest.mark.parametrize("exc_factory", [asyncio.CancelledError, TimeoutError])
+    async def test_run_global_params_exits_on_timeout(self, capsys, exc_factory):
+        """_run_global_params exits with code 1 and prints a friendly message."""
+        client = _make_mock_client_raising(exc_factory)
+        args = _make_args(broker="192.0.2.1", serial="SN1")
+
+        with (
+            patch("yarbo._cli.YarboLocalClient", return_value=client),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            await _run_global_params(args)
+
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "timed out" in out.lower() or "error" in out.lower()
+
+    @pytest.mark.parametrize("exc_factory", [asyncio.CancelledError, TimeoutError])
+    async def test_run_map_exits_on_timeout(self, capsys, exc_factory):
+        """_run_map exits with code 1 and prints a friendly message."""
+        client = _make_mock_client_raising(exc_factory)
+        args = _make_args(broker="192.0.2.1", serial="SN1")
+
+        with (
+            patch("yarbo._cli.YarboLocalClient", return_value=client),
+            pytest.raises(SystemExit) as exc_info,
+        ):
+            await _run_map(args)
+
+        assert exc_info.value.code == 1
+        out = capsys.readouterr().out
+        assert "timed out" in out.lower() or "error" in out.lower()
