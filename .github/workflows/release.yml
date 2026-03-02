@@ -94,7 +94,7 @@ jobs:
           cat release-notes.txt
 
       - name: Upload distribution artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: python-yarbo-${{ steps.version.outputs.version }}
           path: dist/
