@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v2026.3.20). Leave empty when triggered by tag push.'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -58,9 +64,11 @@ jobs:
     environment: release
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout (tag ref when manual)
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ github.event.inputs.tag && format('refs/tags/{0}', github.event.inputs.tag) || github.ref }}
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v6
@@ -68,13 +76,17 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Extract version from tag
+      - name: Resolve tag and version
         id: version
         run: |
-          TAG="${GITHUB_REF_NAME}"         # e.g. v0.1.0
-          VERSION="${TAG#v}"               # e.g. 0.1.0
-          echo "tag=$TAG"         >> "$GITHUB_OUTPUT"
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved tag=$TAG version=$VERSION"
 
       - name: Install build tools
         run: pip install build
