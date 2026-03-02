@@ -60,3 +60,4 @@ secrets.json
 
 # Distribution
 output/
+uv.lock
