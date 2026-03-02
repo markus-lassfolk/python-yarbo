@@ -179,10 +179,6 @@ class YarboLocalClient:
         )
         self._controller_acquired = False
         self._last_status: YarboTelemetry | None = None
-        self._mqtt_log_path = mqtt_log_path
-        self._debug = debug
-        self._debug_raw = debug_raw
-        self._mqtt_capture_max = mqtt_capture_max
 
     # ------------------------------------------------------------------
     # Context manager
