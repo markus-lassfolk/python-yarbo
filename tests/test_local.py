@@ -896,9 +896,7 @@ class TestQueueReleaseOnCancelledError:
     leaked the queue because CancelledError is a BaseException, not Exception.
     """
 
-    async def test_list_schedules_releases_queue_on_cancelled_publish(
-        self, mock_transport
-    ):
+    async def test_list_schedules_releases_queue_on_cancelled_publish(self, mock_transport):
         """Queue is released via release_queue() when publish raises CancelledError."""
         mock_transport.publish = AsyncMock(side_effect=asyncio.CancelledError())
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
