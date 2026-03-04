@@ -168,14 +168,17 @@ class YarboLocalClient:
         self._sn = sn
         self._port = port
         self._auto_controller = auto_controller
-        self._transport = MqttTransport(broker=broker, sn=sn, port=port)
+        self._transport = MqttTransport(
+            broker=broker,
+            sn=sn,
+            port=port,
+            mqtt_log_path=mqtt_log_path,
+            debug=debug,
+            debug_raw=debug_raw,
+            mqtt_capture_max=mqtt_capture_max,
+        )
         self._controller_acquired = False
         self._last_status: YarboTelemetry | None = None
-        self._mqtt_log_path = mqtt_log_path
-        self._debug = debug
-        self._debug_raw = debug_raw
-        self._mqtt_capture_max = mqtt_capture_max
-        self._captured_mqtt: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------------
     # Context manager
@@ -222,7 +225,7 @@ class YarboLocalClient:
 
     def get_captured_mqtt(self) -> list[dict[str, Any]]:
         """Return captured MQTT messages (populated when mqtt_capture_max > 0)."""
-        return list(self._captured_mqtt)
+        return self._transport.get_captured_mqtt()
 
     @property
     def is_connected(self) -> bool:
@@ -485,6 +488,7 @@ class YarboLocalClient:
                     t.plan_state = _plan_payload.get("state")
                     t.area_covered = _plan_payload.get("areaCovered")
                     t.duration = _plan_payload.get("duration")
+                self._last_status = t
                 yield t
 
     # ------------------------------------------------------------------
@@ -810,7 +814,8 @@ class YarboLocalClient:
         )
         if msg is None:
             return {}
-        return dict(msg.get("data", {}) or {})
+        data = msg.get("data", {}) or {}
+        return data if isinstance(data, dict) else {"data": data}
 
     async def set_global_params(self, params: dict[str, Any]) -> YarboCommandResult:
         """Save global robot parameters (``cmd_save_para``).
@@ -1035,10 +1040,12 @@ class YarboLocalClient:
 
     async def check_camera_status(self) -> YarboCommandResult:
         """Request current camera status."""
+        await self._ensure_controller()
         return await self._publish_and_wait("check_camera_status", {})
 
     async def camera_calibration(self) -> YarboCommandResult:
         """Trigger camera calibration."""
+        await self._ensure_controller()
         return await self._publish_and_wait("camera_calibration", {})
 
     # ------------------------------------------------------------------
@@ -1386,7 +1393,7 @@ class YarboLocalClient:
                 command_name=cmd,
                 _queue=wait_queue,
             )
-            return msg.get("data", {}) or {} if isinstance(msg, dict) else {}
+            return (msg.get("data", {}) or {}) if isinstance(msg, dict) else {}
         except BaseException:
             self._transport.release_queue(wait_queue)
             raise
@@ -1623,14 +1630,17 @@ class YarboLocalClient:
         """
         if not confirm:
             raise ValueError("firmware_update_now is destructive — pass confirm=True to proceed.")
+        await self._ensure_controller()
         return await self._publish_and_wait("firmware_update_now", {})
 
     async def firmware_update_tonight(self) -> YarboCommandResult:
         """Schedule a firmware update for tonight."""
+        await self._ensure_controller()
         return await self._publish_and_wait("firmware_update_tonight", {})
 
     async def firmware_update_later(self) -> YarboCommandResult:
         """Defer a pending firmware update."""
+        await self._ensure_controller()
         return await self._publish_and_wait("firmware_update_later", {})
 
     # ------------------------------------------------------------------
