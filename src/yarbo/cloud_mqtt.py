@@ -16,9 +16,10 @@ References:
 
 from __future__ import annotations
 
+import asyncio
 import os
 
-from .const import CLOUD_BROKER, CLOUD_PORT_TLS
+from .const import CLOUD_BROKER, CLOUD_PORT_TLS, POLLING_INTERVAL_DEFAULT
 from .local import YarboLocalClient
 from .mqtt import MqttTransport
 
@@ -106,3 +107,8 @@ class YarboCloudMqttClient(YarboLocalClient):
             tls=True,
             tls_ca_certs=tls_ca_certs,
         )
+        self._last_status = None
+        self._polling_task = None
+        self._polling_stop_event = asyncio.Event()
+        self._polling_interval = POLLING_INTERVAL_DEFAULT
+        self._last_telemetry_received_at = 0.0

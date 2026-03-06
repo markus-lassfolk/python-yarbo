@@ -213,10 +213,10 @@ class TestYarboLocalClientController:
 @pytest.mark.asyncio
 class TestYarboLocalClientTelemetry:
     async def test_get_status_derives_sn_from_topic_when_missing_from_payload(self, mock_transport):
-        """get_status passes envelope topic to from_dict so sn is derived when absent."""
+        """get_status publishes get_device_msg and passes envelope topic to from_dict."""
         mock_transport.wait_for_message = AsyncMock(
             return_value={
-                "topic": "snowbot/SN42/device/DeviceMSG",
+                "topic": "snowbot/SN42/device/data_feedback",
                 "payload": {"BatteryMSG": {"capacity": 50}},
             }
         )
@@ -226,6 +226,9 @@ class TestYarboLocalClientTelemetry:
         assert result is not None
         assert isinstance(result, YarboTelemetry)
         assert result.sn == "SN42"
+        mock_transport.publish.assert_called_once()
+        assert mock_transport.publish.call_args[0][0] == "get_device_msg"
+        assert mock_transport.publish.call_args[0][1] == {}
 
     async def test_watch_telemetry_yields(self, mock_transport):
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
@@ -277,6 +280,78 @@ class TestYarboLocalClientTelemetry:
             assert t.area_covered == pytest.approx(55.0)
             assert t.duration == pytest.approx(120.0)
             assert t.battery == 70
+
+    async def test_watch_telemetry_yields_data_feedback_telemetry(self):
+        """watch_telemetry yields telemetry from data_feedback (get_device_msg response)."""
+        with patch("yarbo.local.MqttTransport") as MockT:  # noqa: N806
+            instance = MagicMock()
+            instance.connect = AsyncMock()
+            instance.is_connected = True
+            instance.add_reconnect_callback = MagicMock()
+
+            async def fake_stream():
+                yield TelemetryEnvelope(
+                    kind="data_feedback",
+                    payload={"BatteryMSG": {"capacity": 60}, "StateMSG": {"working_state": 0}},
+                    topic="snowbot/TEST/device/data_feedback",
+                )
+
+            instance.telemetry_stream = fake_stream
+            MockT.return_value = instance
+
+            client = YarboLocalClient(broker="192.0.2.1", sn="TEST")
+            await client.connect()
+            items = []
+            async for t in client.watch_telemetry():
+                items.append(t)
+                break
+            assert len(items) == 1
+            assert items[0].battery == 60
+            assert items[0].working_state == 0
+
+
+@pytest.mark.asyncio
+class TestYarboLocalClientPolling:
+    """Tests for telemetry polling (get_device_msg keepalive)."""
+
+    async def test_start_polling_stops_previous_task(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        await client.start_polling(interval_seconds=10.0)
+        assert client.is_polling
+        await client.start_polling(interval_seconds=15.0)
+        assert client.is_polling
+        await client.stop_polling()
+        assert not client.is_polling
+
+    async def test_stop_polling_no_op_when_not_polling(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        await client.stop_polling()
+        assert not client.is_polling
+
+    async def test_polling_interval_validation(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        with pytest.raises(ValueError, match="5.*3600"):
+            await client.start_polling(interval_seconds=2.0)
+        with pytest.raises(ValueError, match="5.*3600"):
+            await client.start_polling(interval_seconds=4000.0)
+        await client.start_polling(interval_seconds=10.0)
+        await client.stop_polling()
+
+    async def test_disconnect_stops_polling(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        await client.start_polling(interval_seconds=10.0)
+        assert client.is_polling
+        await client.disconnect()
+        assert not client.is_polling
+
+    async def test_is_polling_false_before_start(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        assert not client.is_polling
 
 
 @pytest.mark.asyncio

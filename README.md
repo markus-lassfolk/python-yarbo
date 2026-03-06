@@ -141,6 +141,9 @@ asyncio.run(main())
 | `async with YarboClient(broker, sn)` | Connect via async context manager |
 | `await client.get_status()` | Single telemetry snapshot → `YarboTelemetry` |
 | `await client.watch_telemetry()` | Async generator of `YarboTelemetry` |
+| `await client.start_polling(interval_seconds=10)` | Start get_device_msg keepalive (5–3600 s) |
+| `await client.stop_polling()` | Stop telemetry polling |
+| `client.is_polling` | True if polling is active |
 | `await client.lights_on()` | All LEDs → 255 |
 | `await client.lights_off()` | All LEDs → 0 |
 | `await client.set_lights(YarboLightState)` | Per-channel LED control |
@@ -154,6 +157,21 @@ asyncio.run(main())
 ### `YarboLocalClient` (MQTT-only)
 
 Same interface as `YarboClient`, local only, no cloud features. Optional constructor args for troubleshooting: **`debug`** / **`debug_raw`** (print every MQTT message to stderr), **`mqtt_log_path`** (append raw messages to a file), **`mqtt_capture_max`** (buffer last N messages for `get_captured_mqtt()` e.g. for GlitchTip reports). See [Debug and troubleshooting](#debug-and-troubleshooting).
+
+**Telemetry without the mobile app:** The robot only streams `DeviceMSG` (~1 Hz) while the app is connected. When the app is closed, it falls back to `heart_beat` only. To keep telemetry flowing (e.g. for Home Assistant or scripts), use **telemetry polling**:
+
+```python
+async with YarboLocalClient(broker="192.168.1.24", sn="YOUR_SERIAL") as client:
+    # Optional: start polling explicitly (default 10 s interval; 5–3600 s allowed)
+    await client.start_polling(interval_seconds=10.0)
+    async for telemetry in client.watch_telemetry():
+        print(f"Battery: {telemetry.battery}%")
+        if some_condition:
+            break
+    await client.stop_polling()  # or just exit the context manager
+```
+
+If you only use `watch_telemetry()` without calling `start_polling()`, the client will **auto-start** polling after ~15 seconds with no telemetry. `get_status()` always requests a snapshot via `get_device_msg`, so it works with or without the app.
 
 ### `YarboLightState`
 

@@ -33,6 +33,7 @@ References:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from datetime import UTC, datetime
 import logging
 import time
@@ -42,8 +43,12 @@ from .const import (
     DEFAULT_CMD_TIMEOUT,
     LOCAL_BROKER_DEFAULT,
     LOCAL_PORT,
+    POLLING_INTERVAL_DEFAULT,
+    POLLING_INTERVAL_MAX,
+    POLLING_INTERVAL_MIN,
     TOPIC_LEAF_DATA_FEEDBACK,
     TOPIC_LEAF_DEVICE_MSG,
+    TOPIC_LEAF_GET_DEVICE_MSG,
     TOPIC_LEAF_PLAN_FEEDBACK,
 )
 from .exceptions import YarboNotControllerError, YarboTimeoutError
@@ -123,6 +128,17 @@ def _extract_schedule_list(
     return []
 
 
+def _payload_looks_like_device_msg(payload: dict[str, Any]) -> bool:
+    """True if this payload has DeviceMSG structure (BatteryMSG, StateMSG, etc.).
+
+    Used to treat get_device_msg responses on data_feedback as telemetry.
+    """
+    return bool(
+        isinstance(payload, dict)
+        and (payload.get("BatteryMSG") is not None or payload.get("StateMSG") is not None)
+    )
+
+
 class YarboLocalClient:
     """
     Local MQTT client for anonymous control of a Yarbo robot.
@@ -179,6 +195,11 @@ class YarboLocalClient:
         )
         self._controller_acquired = False
         self._last_status: YarboTelemetry | None = None
+        # Telemetry polling (keepalive when app is disconnected)
+        self._polling_task: asyncio.Task[None] | None = None
+        self._polling_stop_event = asyncio.Event()
+        self._polling_interval: float = POLLING_INTERVAL_DEFAULT
+        self._last_telemetry_received_at: float = 0.0  # monotonic, for auto-start
 
     # ------------------------------------------------------------------
     # Context manager
@@ -221,6 +242,7 @@ class YarboLocalClient:
 
     async def disconnect(self) -> None:
         """Disconnect from the local MQTT broker."""
+        await self._stop_polling()
         await self._transport.disconnect()
 
     def get_captured_mqtt(self) -> list[dict[str, Any]]:
@@ -241,6 +263,76 @@ class YarboLocalClient:
     def controller_acquired(self) -> bool:
         """True if the controller handshake has been successfully completed."""
         return self._controller_acquired
+
+    @property
+    def is_polling(self) -> bool:
+        """True if telemetry polling (get_device_msg keepalive) is active."""
+        return self._polling_task is not None and not self._polling_task.done()
+
+    async def start_polling(
+        self,
+        interval_seconds: float = POLLING_INTERVAL_DEFAULT,
+    ) -> None:
+        """Start periodic get_device_msg requests to keep telemetry flowing without the app.
+
+        The robot only streams DeviceMSG (~1 Hz) while the mobile app is connected.
+        Once the app disconnects, it only publishes heart_beat. Publishing
+        get_device_msg periodically causes the robot to respond with a full
+        telemetry snapshot on data_feedback, so watch_telemetry() and get_status()
+        keep receiving data.
+
+        Args:
+            interval_seconds: Seconds between requests (5–3600). Default 10.
+
+        Raises:
+            ValueError: If interval_seconds is outside 5–3600.
+        """
+        if not (POLLING_INTERVAL_MIN <= interval_seconds <= POLLING_INTERVAL_MAX):
+            raise ValueError(
+                f"interval_seconds must be between {POLLING_INTERVAL_MIN} and "
+                f"{POLLING_INTERVAL_MAX}, got {interval_seconds}"
+            )
+        await self._stop_polling()
+        self._polling_interval = interval_seconds
+        self._polling_stop_event.clear()
+
+        async def _poll_loop() -> None:
+            while True:
+                try:
+                    await asyncio.wait_for(
+                        self._polling_stop_event.wait(),
+                        timeout=self._polling_interval,
+                    )
+                    return  # event set → stop
+                except TimeoutError:
+                    pass
+                if not self.is_connected:
+                    return
+                try:
+                    await self._transport.publish(TOPIC_LEAF_GET_DEVICE_MSG, {})
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Polling get_device_msg failed: %s", exc)
+
+        self._polling_task = asyncio.create_task(_poll_loop())
+        logger.debug(
+            "Telemetry polling started (interval=%.1fs, sn=%s)",
+            self._polling_interval,
+            self._sn,
+        )
+
+    async def stop_polling(self) -> None:
+        """Stop telemetry polling. No-op if not polling."""
+        await self._stop_polling()
+
+    async def _stop_polling(self) -> None:
+        """Internal: stop polling task and clear state."""
+        self._polling_stop_event.set()
+        if self._polling_task is not None:
+            self._polling_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._polling_task
+            self._polling_task = None
+            logger.debug("Telemetry polling stopped (sn=%s)", self._sn)
 
     @property
     def last_heartbeat(self) -> datetime | None:
@@ -400,24 +492,34 @@ class YarboLocalClient:
 
     async def get_status(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> YarboTelemetry | None:
         """
-        Fetch a single telemetry snapshot from ``DeviceMSG`` (full telemetry).
+        Fetch a single telemetry snapshot (full telemetry).
 
-        Waits for the next ``DeviceMSG`` message, which contains the complete
-        nested telemetry payload (battery, state, RTK, odometry, etc.).
+        Publishes ``get_device_msg`` and waits for the robot's response on
+        ``data_feedback``, so this works even when the mobile app is
+        disconnected and the robot is not streaming ``DeviceMSG``.
 
         Returns:
             :class:`~yarbo.models.YarboTelemetry` or ``None`` on timeout.
         """
+        wait_queue = self._transport.create_wait_queue()
+        try:
+            await self._transport.publish(TOPIC_LEAF_GET_DEVICE_MSG, {})
+        except BaseException:
+            self._transport.release_queue(wait_queue)
+            raise
         envelope = await self._transport.wait_for_message(
             timeout=timeout,
-            feedback_leaf=TOPIC_LEAF_DEVICE_MSG,
+            feedback_leaf=TOPIC_LEAF_DATA_FEEDBACK,
+            _queue=wait_queue,
             _return_envelope=True,
+            accept_if=_payload_looks_like_device_msg,
         )
         if envelope:
             topic = envelope.get("topic", "")
             payload = envelope.get("payload", {})
             result = YarboTelemetry.from_dict(payload, topic=topic)
             self._last_status = result
+            self._last_telemetry_received_at = time.monotonic()
             return result
         return None
 
@@ -460,14 +562,13 @@ class YarboLocalClient:
 
     async def watch_telemetry(self) -> AsyncIterator[YarboTelemetry]:
         """
-        Async generator yielding live telemetry from ``DeviceMSG`` messages.
+        Async generator yielding live telemetry from ``DeviceMSG`` and
+        ``get_device_msg`` responses on ``data_feedback``.
 
-        Filters the envelope stream to ``DeviceMSG`` messages only and yields
-        a :class:`~yarbo.models.YarboTelemetry` for each one (~1-2 Hz).
-
-        To access raw envelopes from all topics, use
-        :meth:`~yarbo.mqtt.MqttTransport.telemetry_stream` on the transport
-        directly.
+        When the mobile app is disconnected, the robot only sends
+        ``heart_beat``; call :meth:`start_polling` (or rely on auto-start
+        when no telemetry is received within ~15 s) to request periodic
+        snapshots via ``get_device_msg``.
 
         Example::
 
@@ -476,19 +577,48 @@ class YarboLocalClient:
                 if telemetry.battery and telemetry.battery < 10:
                     break
         """
-        # Cache plan_feedback data to merge into each DeviceMSG telemetry object
+        # Auto-start polling if no telemetry received within this many seconds
+        _auto_poll_delay = 15.0
+        _auto_poll_task: asyncio.Task[None] | None = None
+
+        def _maybe_schedule_auto_poll() -> None:
+            nonlocal _auto_poll_task
+            if _auto_poll_task is not None or self.is_polling:
+                return
+
+            async def _run() -> None:
+                await asyncio.sleep(_auto_poll_delay)
+                if not self.is_connected:
+                    return
+                if self.is_polling:
+                    return
+                # Start polling only if no telemetry received in the last 15s
+                if self._last_telemetry_received_at == 0 or (
+                    time.monotonic() - self._last_telemetry_received_at
+                    >= _auto_poll_delay
+                ):
+                    await self.start_polling()
+
+            _auto_poll_task = asyncio.create_task(_run())
+
+        _maybe_schedule_auto_poll()
+        # Cache plan_feedback data to merge into each telemetry object
         _plan_payload: dict[str, Any] = {}
         async for envelope in self._transport.telemetry_stream():
             if envelope.kind == TOPIC_LEAF_PLAN_FEEDBACK:
                 _plan_payload = envelope.payload
-            elif envelope.is_telemetry:
-                t = envelope.to_telemetry()
+            elif envelope.is_telemetry or (
+                envelope.kind == TOPIC_LEAF_DATA_FEEDBACK
+                and _payload_looks_like_device_msg(envelope.payload)
+            ):
+                t = YarboTelemetry.from_dict(envelope.payload, topic=envelope.topic)
                 if _plan_payload:
                     t.plan_id = _plan_payload.get("planId")
                     t.plan_state = _plan_payload.get("state")
                     t.area_covered = _plan_payload.get("areaCovered")
                     t.duration = _plan_payload.get("duration")
                 self._last_status = t
+                self._last_telemetry_received_at = time.monotonic()
                 yield t
 
     # ------------------------------------------------------------------
