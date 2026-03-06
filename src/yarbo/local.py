@@ -43,6 +43,7 @@ from .const import (
     DEFAULT_CMD_TIMEOUT,
     LOCAL_BROKER_DEFAULT,
     LOCAL_PORT,
+    POLLING_INTERVAL_ACTIVE,
     POLLING_INTERVAL_DEFAULT,
     POLLING_INTERVAL_MAX,
     POLLING_INTERVAL_MIN,
@@ -199,6 +200,7 @@ class YarboLocalClient:
         self._polling_task: asyncio.Task[None] | None = None
         self._polling_stop_event = asyncio.Event()
         self._polling_interval: float = POLLING_INTERVAL_DEFAULT
+        self._polling_interval_active: float | None = POLLING_INTERVAL_ACTIVE
         self._last_telemetry_received_at: float = 0.0  # monotonic, for auto-start
 
     # ------------------------------------------------------------------
@@ -272,6 +274,7 @@ class YarboLocalClient:
     async def start_polling(
         self,
         interval_seconds: float = POLLING_INTERVAL_DEFAULT,
+        interval_when_active_seconds: float | None = POLLING_INTERVAL_ACTIVE,
     ) -> None:
         """Start periodic get_device_msg requests to keep telemetry flowing without the app.
 
@@ -281,27 +284,46 @@ class YarboLocalClient:
         telemetry snapshot on data_feedback, so watch_telemetry() and get_status()
         keep receiving data.
 
+        When the robot is active (working_state == 1), the poll interval switches
+        to interval_when_active_seconds (default 1s) for live telemetry.
+
         Args:
-            interval_seconds: Seconds between requests (5–3600). Default 10.
+            interval_seconds: Seconds between requests when idle (1–3600). Default 10.
+            interval_when_active_seconds: Seconds between requests when active; use
+                None to disable faster polling when active.
 
         Raises:
-            ValueError: If interval_seconds is outside 5–3600.
+            ValueError: If interval_seconds is outside 1–3600 or interval_when_active_seconds
+                is not None and outside 1–3600.
         """
         if not (POLLING_INTERVAL_MIN <= interval_seconds <= POLLING_INTERVAL_MAX):
             raise ValueError(
                 f"interval_seconds must be between {POLLING_INTERVAL_MIN} and "
                 f"{POLLING_INTERVAL_MAX}, got {interval_seconds}"
             )
+        if interval_when_active_seconds is not None and not (
+            POLLING_INTERVAL_MIN <= interval_when_active_seconds <= POLLING_INTERVAL_MAX
+        ):
+            raise ValueError(
+                f"interval_when_active_seconds must be between {POLLING_INTERVAL_MIN} and "
+                f"{POLLING_INTERVAL_MAX}, got {interval_when_active_seconds}"
+            )
         await self._stop_polling()
         self._polling_interval = interval_seconds
+        self._polling_interval_active = interval_when_active_seconds
         self._polling_stop_event.clear()
 
         async def _poll_loop() -> None:
+            await self._ensure_controller()
             while True:
+                if self._last_status is not None and self._last_status.working_state == 1:
+                    wait_s = self._polling_interval_active or self._polling_interval
+                else:
+                    wait_s = self._polling_interval
                 try:
                     await asyncio.wait_for(
                         self._polling_stop_event.wait(),
-                        timeout=self._polling_interval,
+                        timeout=wait_s,
                     )
                     return  # event set → stop
                 except TimeoutError:
@@ -497,10 +519,12 @@ class YarboLocalClient:
         Publishes ``get_device_msg`` and waits for the robot's response on
         ``data_feedback``, so this works even when the mobile app is
         disconnected and the robot is not streaming ``DeviceMSG``.
+        Acquires controller first so the robot responds (required by some firmware).
 
         Returns:
             :class:`~yarbo.models.YarboTelemetry` or ``None`` on timeout.
         """
+        await self._ensure_controller()
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish(TOPIC_LEAF_GET_DEVICE_MSG, {})
@@ -567,7 +591,7 @@ class YarboLocalClient:
 
         When the mobile app is disconnected, the robot only sends
         ``heart_beat``; call :meth:`start_polling` (or rely on auto-start
-        when no telemetry is received within ~15 s) to request periodic
+        when no telemetry is received within ~5 s) to request periodic
         snapshots via ``get_device_msg``.
 
         Example::
@@ -578,7 +602,7 @@ class YarboLocalClient:
                     break
         """
         # Auto-start polling if no telemetry received within this many seconds
-        _auto_poll_delay = 15.0
+        _auto_poll_delay = 5.0
         _auto_poll_task: asyncio.Task[None] | None = None
 
         def _maybe_schedule_auto_poll() -> None:
@@ -592,7 +616,7 @@ class YarboLocalClient:
                     return
                 if self.is_polling:
                     return
-                # Start polling only if no telemetry received in the last 15s
+                # Start polling only if no telemetry received in the last _auto_poll_delay
                 if self._last_telemetry_received_at == 0 or (
                     time.monotonic() - self._last_telemetry_received_at
                     >= _auto_poll_delay

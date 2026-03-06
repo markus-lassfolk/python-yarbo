@@ -137,11 +137,12 @@ DEFAULT_CONNECT_TIMEOUT = 10.0
 # Telemetry polling (keepalive when mobile app is disconnected)
 #: Command leaf to request full telemetry snapshot (robot responds on data_feedback).
 TOPIC_LEAF_GET_DEVICE_MSG = "get_device_msg"
-#: Default interval (s) for get_device_msg polling when telemetry is requested but
-#: not flowing.
+#: Default interval (s) for get_device_msg polling when robot is idle.
 POLLING_INTERVAL_DEFAULT = 10.0
+#: Interval (s) when robot is active (working_state==1) for live telemetry.
+POLLING_INTERVAL_ACTIVE = 1.0
 #: Minimum allowed polling interval (seconds).
-POLLING_INTERVAL_MIN = 5.0
+POLLING_INTERVAL_MIN = 1.0
 #: Maximum allowed polling interval (seconds).
 POLLING_INTERVAL_MAX = 3600.0
 

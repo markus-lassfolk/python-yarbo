@@ -111,4 +111,5 @@ class YarboCloudMqttClient(YarboLocalClient):
         self._polling_task = None
         self._polling_stop_event = asyncio.Event()
         self._polling_interval = POLLING_INTERVAL_DEFAULT
+        self._polling_interval_active = None  # set by start_polling if used
         self._last_telemetry_received_at = 0.0

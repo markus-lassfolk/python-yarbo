@@ -17,6 +17,9 @@ env/
 ENV/
 .env
 
+# Script output
+scripts/test_two_brokers_result.txt
+
 # Testing
 .pytest_cache/
 .coverage
@@ -60,4 +63,5 @@ secrets.json
 
 # Distribution
 output/
+uv.lock
 uv.lock

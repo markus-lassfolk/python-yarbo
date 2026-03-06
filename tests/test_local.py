@@ -213,12 +213,16 @@ class TestYarboLocalClientController:
 @pytest.mark.asyncio
 class TestYarboLocalClientTelemetry:
     async def test_get_status_derives_sn_from_topic_when_missing_from_payload(self, mock_transport):
-        """get_status publishes get_device_msg and passes envelope topic to from_dict."""
+        """get_status acquires controller, then publishes get_device_msg and returns telemetry."""
+        # get_status calls _ensure_controller() then get_device_msg; two wait_for_message calls
         mock_transport.wait_for_message = AsyncMock(
-            return_value={
-                "topic": "snowbot/SN42/device/data_feedback",
-                "payload": {"BatteryMSG": {"capacity": 50}},
-            }
+            side_effect=[
+                {"topic": "get_controller", "state": 0, "data": {}},
+                {
+                    "topic": "snowbot/SN42/device/data_feedback",
+                    "payload": {"BatteryMSG": {"capacity": 50}},
+                },
+            ]
         )
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
@@ -226,9 +230,10 @@ class TestYarboLocalClientTelemetry:
         assert result is not None
         assert isinstance(result, YarboTelemetry)
         assert result.sn == "SN42"
-        mock_transport.publish.assert_called_once()
-        assert mock_transport.publish.call_args[0][0] == "get_device_msg"
-        assert mock_transport.publish.call_args[0][1] == {}
+        assert mock_transport.publish.call_count == 2
+        assert mock_transport.publish.call_args_list[0][0][0] == "get_controller"
+        assert mock_transport.publish.call_args_list[1][0][0] == "get_device_msg"
+        assert mock_transport.publish.call_args_list[1][0][1] == {}
 
     async def test_watch_telemetry_yields(self, mock_transport):
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
@@ -333,9 +338,9 @@ class TestYarboLocalClientPolling:
     async def test_polling_interval_validation(self, mock_transport):
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
-        with pytest.raises(ValueError, match="5.*3600"):
-            await client.start_polling(interval_seconds=2.0)
-        with pytest.raises(ValueError, match="5.*3600"):
+        with pytest.raises(ValueError, match="1.*3600"):
+            await client.start_polling(interval_seconds=0.5)
+        with pytest.raises(ValueError, match="1.*3600"):
             await client.start_polling(interval_seconds=4000.0)
         await client.start_polling(interval_seconds=10.0)
         await client.stop_polling()
@@ -352,6 +357,16 @@ class TestYarboLocalClientPolling:
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
         assert not client.is_polling
+
+    async def test_start_polling_accepts_interval_when_active(self, mock_transport):
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        await client.start_polling(interval_seconds=10.0, interval_when_active_seconds=1.0)
+        assert client.is_polling
+        await client.stop_polling()
+        await client.start_polling(interval_seconds=10.0, interval_when_active_seconds=None)
+        assert client.is_polling
+        await client.stop_polling()
 
 
 @pytest.mark.asyncio

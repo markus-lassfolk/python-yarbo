@@ -141,7 +141,7 @@ asyncio.run(main())
 | `async with YarboClient(broker, sn)` | Connect via async context manager |
 | `await client.get_status()` | Single telemetry snapshot → `YarboTelemetry` |
 | `await client.watch_telemetry()` | Async generator of `YarboTelemetry` |
-| `await client.start_polling(interval_seconds=10)` | Start get_device_msg keepalive (5–3600 s) |
+| `await client.start_polling(interval_seconds=10, …)` | Start get_device_msg keepalive (1–3600 s; 1 s when active) |
 | `await client.stop_polling()` | Stop telemetry polling |
 | `client.is_polling` | True if polling is active |
 | `await client.lights_on()` | All LEDs → 255 |
@@ -162,8 +162,8 @@ Same interface as `YarboClient`, local only, no cloud features. Optional constru
 
 ```python
 async with YarboLocalClient(broker="192.168.1.24", sn="YOUR_SERIAL") as client:
-    # Optional: start polling explicitly (default 10 s interval; 5–3600 s allowed)
-    await client.start_polling(interval_seconds=10.0)
+    # Optional: start polling (idle 10 s; when robot active, 1 s for live telemetry)
+    await client.start_polling(interval_seconds=10.0)  # 1–3600 s
     async for telemetry in client.watch_telemetry():
         print(f"Battery: {telemetry.battery}%")
         if some_condition:
@@ -171,7 +171,7 @@ async with YarboLocalClient(broker="192.168.1.24", sn="YOUR_SERIAL") as client:
     await client.stop_polling()  # or just exit the context manager
 ```
 
-If you only use `watch_telemetry()` without calling `start_polling()`, the client will **auto-start** polling after ~15 seconds with no telemetry. `get_status()` always requests a snapshot via `get_device_msg`, so it works with or without the app.
+If you only use `watch_telemetry()` without calling `start_polling()`, the client will **auto-start** polling after ~5 seconds with no telemetry. `get_status()` always requests a snapshot via `get_device_msg` (and acquires controller first), so it works with or without the app. Use your robot's MQTT broker IP (e.g. from `yarbo discover`, or the DC/robot's WiFi address).
 
 ### `YarboLightState`
 
@@ -260,6 +260,7 @@ Key protocol facts (community-observed):
   `CombinedOdom.x/y/phi`
 - **Not yet implemented**: Local REST API (port 8088) and TCP JSON (port 22220)
   are not yet implemented here
+- **Telemetry and brokers**: See [Telemetry, get_device_msg, and brokers](docs/telemetry_mqtt_and_brokers.md) for who receives responses (topic-based; any subscriber) and using two broker IPs (Rover vs DC).
 
 ## Debug and troubleshooting
 
