@@ -34,3 +34,23 @@ We ran `scripts/test_two_brokers_telemetry.py` with:
 **Result:** Both brokers received the same traffic. Broker1 received 2× `data_feedback` and 3× `heart_beat`; Broker2 received the same (2× `data_feedback`, 3× `heart_beat`). So in this setup the two broker IPs (discovered as DC and Rover) **mirror traffic** — the response to the command sent to 192.168.1.55 was visible on 192.168.1.24 as well.
 
 **Conclusion:** With the tested firmware/network, you can use either broker IP (192.168.1.24 or 192.168.1.55) and see the same data; the system appears to keep both brokers in sync. Behaviour may differ with other setups (e.g. different firmware), so for a new deployment it is still safe to use “connect to one broker and use it for both send and subscribe.”
+
+---
+
+## Coexistence with the mobile app (optional get_controller)
+
+**Finding:** The robot responds to `get_device_msg` **without** requiring `get_controller`. We tested with the mobile app in control:
+
+- **With get_controller:** Sent get_controller then get_device_msg every 10s → received status response for every request (e.g. 3/3).
+- **Without get_controller:** Sent only get_device_msg every 10s → received status response for every request (e.g. 4/4).
+
+So telemetry polling does **not** need to take controller. That lets the app stay in control while your integration (e.g. Home Assistant) receives telemetry.
+
+**API:** Controller is optional for telemetry-only use:
+
+- **`get_status(acquire_controller=False)`** (default) — Sends only `get_device_msg`; does not call `get_controller`. Use this when you only need a snapshot and want the app to keep control.
+- **`get_status(acquire_controller=True)`** — Calls `get_controller` then `get_device_msg` (previous behaviour). Use only if your setup requires it.
+- **`start_polling(..., acquire_controller=False)`** (default) — Poll loop sends only `get_device_msg`; does not call `get_controller`. Safe for coexistence with the app.
+- **`start_polling(..., acquire_controller=True)`** — Calls `get_controller` before starting the poll loop (may take control from the app).
+
+**When to call get_controller:** Call `get_controller()` (or use `acquire_controller=True`) only when you are about to send **action commands** (lights, buzzer, chute, plans, manual drive, etc.). For telemetry only (get_status, watch_telemetry, polling), use the defaults so the app can remain in control.

@@ -141,7 +141,7 @@ asyncio.run(main())
 | `async with YarboClient(broker, sn)` | Connect via async context manager |
 | `await client.get_status()` | Single telemetry snapshot → `YarboTelemetry` |
 | `await client.watch_telemetry()` | Async generator of `YarboTelemetry` |
-| `await client.start_polling(interval_seconds=10, …)` | Start get_device_msg keepalive (1–3600 s; 1 s when active) |
+| `await client.start_polling(..., acquire_controller=False)` | Start get_device_msg keepalive (no get_controller by default) |
 | `await client.stop_polling()` | Stop telemetry polling |
 | `client.is_polling` | True if polling is active |
 | `await client.lights_on()` | All LEDs → 255 |
@@ -149,7 +149,7 @@ asyncio.run(main())
 | `await client.set_lights(YarboLightState)` | Per-channel LED control |
 | `await client.buzzer(state=1)` | Buzzer on (1) or off (0) |
 | `await client.set_chute(vel)` | Snow chute direction |
-| `await client.get_controller()` | Acquire controller role (auto-called) |
+| `await client.get_controller()` | Acquire controller (optional; call before sending commands) |
 | `await client.publish_raw(cmd, payload)` | Arbitrary MQTT command |
 | `await client.list_robots()` | Cloud: bound robots |
 | `YarboClient.connect_sync(broker, sn)` | Sync wrapper factory |
@@ -171,7 +171,7 @@ async with YarboLocalClient(broker="192.168.1.24", sn="YOUR_SERIAL") as client:
     await client.stop_polling()  # or just exit the context manager
 ```
 
-If you only use `watch_telemetry()` without calling `start_polling()`, the client will **auto-start** polling after ~5 seconds with no telemetry. `get_status()` always requests a snapshot via `get_device_msg` (and acquires controller first), so it works with or without the app. Use your robot's MQTT broker IP (e.g. from `yarbo discover`, or the DC/robot's WiFi address).
+If you only use `watch_telemetry()` without calling `start_polling()`, the client will **auto-start** polling after ~5 seconds with no telemetry. `get_status()` and `start_polling()` do **not** call `get_controller` by default, so the mobile app can stay in control while you receive telemetry. Use `acquire_controller=True` or call `get_controller()` only when you need to send commands (lights, buzzer, plans, etc.). See [Telemetry and brokers](docs/telemetry_mqtt_and_brokers.md#coexistence-with-the-mobile-app-optional-get_controller).
 
 ### `YarboLightState`
 

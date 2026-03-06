@@ -171,9 +171,16 @@ class YarboClient:
         """
         return await self._local.get_controller()
 
-    async def get_status(self, timeout: float = 5.0) -> YarboTelemetry | None:
+    async def get_status(
+        self,
+        timeout: float = 5.0,
+        *,
+        acquire_controller: bool = False,
+    ) -> YarboTelemetry | None:
         """Return a single telemetry snapshot from the robot."""
-        return await self._local.get_status(timeout=timeout)
+        return await self._local.get_status(
+            timeout=timeout, acquire_controller=acquire_controller
+        )
 
     async def watch_telemetry(self) -> AsyncIterator[YarboTelemetry]:
         """Async generator yielding live telemetry from the robot."""

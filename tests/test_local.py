@@ -213,8 +213,23 @@ class TestYarboLocalClientController:
 @pytest.mark.asyncio
 class TestYarboLocalClientTelemetry:
     async def test_get_status_derives_sn_from_topic_when_missing_from_payload(self, mock_transport):
-        """get_status acquires controller, then publishes get_device_msg and returns telemetry."""
-        # get_status calls _ensure_controller() then get_device_msg; two wait_for_message calls
+        """get_status publishes get_device_msg (no controller by default) and returns telemetry."""
+        mock_transport.wait_for_message = AsyncMock(
+            return_value={
+                "topic": "snowbot/SN42/device/data_feedback",
+                "payload": {"BatteryMSG": {"capacity": 50}},
+            }
+        )
+        client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
+        await client.connect()
+        result = await client.get_status(timeout=1.0)
+        assert result is not None
+        assert isinstance(result, YarboTelemetry)
+        assert result.sn == "SN42"
+        mock_transport.publish.assert_called_once_with("get_device_msg", {})
+
+    async def test_get_status_with_acquire_controller_calls_get_controller(self, mock_transport):
+        """get_status(acquire_controller=True) calls get_controller then get_device_msg."""
         mock_transport.wait_for_message = AsyncMock(
             side_effect=[
                 {"topic": "get_controller", "state": 0, "data": {}},
@@ -226,14 +241,12 @@ class TestYarboLocalClientTelemetry:
         )
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
-        result = await client.get_status(timeout=1.0)
+        result = await client.get_status(timeout=1.0, acquire_controller=True)
         assert result is not None
-        assert isinstance(result, YarboTelemetry)
         assert result.sn == "SN42"
         assert mock_transport.publish.call_count == 2
         assert mock_transport.publish.call_args_list[0][0][0] == "get_controller"
         assert mock_transport.publish.call_args_list[1][0][0] == "get_device_msg"
-        assert mock_transport.publish.call_args_list[1][0][1] == {}
 
     async def test_watch_telemetry_yields(self, mock_transport):
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")

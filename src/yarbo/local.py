@@ -275,6 +275,8 @@ class YarboLocalClient:
         self,
         interval_seconds: float = POLLING_INTERVAL_DEFAULT,
         interval_when_active_seconds: float | None = POLLING_INTERVAL_ACTIVE,
+        *,
+        acquire_controller: bool = False,
     ) -> None:
         """Start periodic get_device_msg requests to keep telemetry flowing without the app.
 
@@ -287,10 +289,17 @@ class YarboLocalClient:
         When the robot is active (working_state == 1), the poll interval switches
         to interval_when_active_seconds (default 1s) for live telemetry.
 
+        By default this does **not** call get_controller, so the mobile app can
+        stay in control while your integration receives telemetry. Set
+        acquire_controller=True if you need controller for other reasons during
+        the same session.
+
         Args:
             interval_seconds: Seconds between requests when idle (1–3600). Default 10.
             interval_when_active_seconds: Seconds between requests when active; use
                 None to disable faster polling when active.
+            acquire_controller: If True, call get_controller before starting the
+                poll loop (may take control from the mobile app). Default False.
 
         Raises:
             ValueError: If interval_seconds is outside 1–3600 or interval_when_active_seconds
@@ -314,7 +323,8 @@ class YarboLocalClient:
         self._polling_stop_event.clear()
 
         async def _poll_loop() -> None:
-            await self._ensure_controller()
+            if acquire_controller:
+                await self._ensure_controller()
             while True:
                 if self._last_status is not None and self._last_status.working_state == 1:
                     wait_s = self._polling_interval_active or self._polling_interval
@@ -512,19 +522,28 @@ class YarboLocalClient:
     # Telemetry
     # ------------------------------------------------------------------
 
-    async def get_status(self, timeout: float = DEFAULT_CMD_TIMEOUT) -> YarboTelemetry | None:
+    async def get_status(
+        self,
+        timeout: float = DEFAULT_CMD_TIMEOUT,
+        *,
+        acquire_controller: bool = False,
+    ) -> YarboTelemetry | None:
         """
         Fetch a single telemetry snapshot (full telemetry).
 
         Publishes ``get_device_msg`` and waits for the robot's response on
         ``data_feedback``, so this works even when the mobile app is
         disconnected and the robot is not streaming ``DeviceMSG``.
-        Acquires controller first so the robot responds (required by some firmware).
+
+        By default this does **not** call get_controller, so the mobile app
+        can stay in control. The robot responds to get_device_msg without
+        controller. Set acquire_controller=True only if needed for your setup.
 
         Returns:
             :class:`~yarbo.models.YarboTelemetry` or ``None`` on timeout.
         """
-        await self._ensure_controller()
+        if acquire_controller:
+            await self._ensure_controller()
         wait_queue = self._transport.create_wait_queue()
         try:
             await self._transport.publish(TOPIC_LEAF_GET_DEVICE_MSG, {})
