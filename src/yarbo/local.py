@@ -48,8 +48,8 @@ from .const import (
     POLLING_INTERVAL_MAX,
     POLLING_INTERVAL_MIN,
     TOPIC_LEAF_DATA_FEEDBACK,
-    TOPIC_LEAF_DEVICE_MSG,
     TOPIC_LEAF_GET_DEVICE_MSG,
+    TOPIC_LEAF_HEART_BEAT,
     TOPIC_LEAF_PLAN_FEEDBACK,
 )
 from .exceptions import YarboNotControllerError, YarboTimeoutError
@@ -129,15 +129,41 @@ def _extract_schedule_list(
     return []
 
 
+def _has_device_msg_keys(d: Any) -> bool:
+    """True if d is a dict with BatteryMSG or StateMSG (DeviceMSG shape)."""
+    return isinstance(d, dict) and (
+        d.get("BatteryMSG") is not None or d.get("StateMSG") is not None
+    )
+
+
 def _payload_looks_like_device_msg(payload: dict[str, Any]) -> bool:
     """True if this payload has DeviceMSG structure (BatteryMSG, StateMSG, etc.).
 
     Used to treat get_device_msg responses on data_feedback as telemetry.
+    Accepts top-level keys or wrapped under \"data\", \"result\", or \"message\".
     """
-    return bool(
-        isinstance(payload, dict)
-        and (payload.get("BatteryMSG") is not None or payload.get("StateMSG") is not None)
-    )
+    if not isinstance(payload, dict):
+        return False
+    if _has_device_msg_keys(payload):
+        return True
+    for key in ("data", "result", "message"):
+        inner = payload.get(key)
+        if _has_device_msg_keys(inner):
+            return True
+    return False
+
+
+def _telemetry_payload_from_envelope(payload: dict[str, Any]) -> dict[str, Any]:
+    """Return the dict to pass to YarboTelemetry.from_dict (unwrap if needed)."""
+    if not isinstance(payload, dict):
+        return payload
+    if _has_device_msg_keys(payload):
+        return payload
+    for key in ("data", "result", "message"):
+        inner = payload.get(key)
+        if isinstance(inner, dict) and _has_device_msg_keys(inner):
+            return inner
+    return payload
 
 
 class YarboLocalClient:
@@ -295,15 +321,15 @@ class YarboLocalClient:
         the same session.
 
         Args:
-            interval_seconds: Seconds between requests when idle (1–3600). Default 10.
+            interval_seconds: Seconds between requests when idle (1-3600). Default 10.
             interval_when_active_seconds: Seconds between requests when active; use
                 None to disable faster polling when active.
             acquire_controller: If True, call get_controller before starting the
                 poll loop (may take control from the mobile app). Default False.
 
         Raises:
-            ValueError: If interval_seconds is outside 1–3600 or interval_when_active_seconds
-                is not None and outside 1–3600.
+            ValueError: If interval_seconds is outside 1-3600 or interval_when_active_seconds
+                is not None and outside 1-3600.
         """
         if not (POLLING_INTERVAL_MIN <= interval_seconds <= POLLING_INTERVAL_MAX):
             raise ValueError(
@@ -559,7 +585,8 @@ class YarboLocalClient:
         )
         if envelope:
             topic = envelope.get("topic", "")
-            payload = envelope.get("payload", {})
+            raw_payload = envelope.get("payload", {})
+            payload = _telemetry_payload_from_envelope(raw_payload)
             result = YarboTelemetry.from_dict(payload, topic=topic)
             self._last_status = result
             self._last_telemetry_received_at = time.monotonic()
@@ -637,8 +664,7 @@ class YarboLocalClient:
                     return
                 # Start polling only if no telemetry received in the last _auto_poll_delay
                 if self._last_telemetry_received_at == 0 or (
-                    time.monotonic() - self._last_telemetry_received_at
-                    >= _auto_poll_delay
+                    time.monotonic() - self._last_telemetry_received_at >= _auto_poll_delay
                 ):
                     await self.start_polling()
 
@@ -650,11 +676,17 @@ class YarboLocalClient:
         async for envelope in self._transport.telemetry_stream():
             if envelope.kind == TOPIC_LEAF_PLAN_FEEDBACK:
                 _plan_payload = envelope.payload
+            elif envelope.kind == TOPIC_LEAF_HEART_BEAT and self._last_status is not None:
+                # Yield cached telemetry so consumers (e.g. HA) can refresh "last seen"
+                # when the robot only sends heart_beat (app disconnected).
+                self._last_telemetry_received_at = time.monotonic()
+                yield self._last_status
             elif envelope.is_telemetry or (
                 envelope.kind == TOPIC_LEAF_DATA_FEEDBACK
                 and _payload_looks_like_device_msg(envelope.payload)
             ):
-                t = YarboTelemetry.from_dict(envelope.payload, topic=envelope.topic)
+                effective = _telemetry_payload_from_envelope(envelope.payload)
+                t = YarboTelemetry.from_dict(effective, topic=envelope.topic)
                 if _plan_payload:
                     t.plan_id = _plan_payload.get("planId")
                     t.plan_state = _plan_payload.get("state")

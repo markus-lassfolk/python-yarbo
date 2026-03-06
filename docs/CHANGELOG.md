@@ -1,4 +1,5 @@
 # Changelog
+- [v2026.3.61](releases/v2026.3.61.md) — Lint fixes for CI (PyPI release)
 - [v2026.3.60](releases/v2026.3.60.md) — Telemetry polling, optional get_controller, HASS coexistence
 - [v2026.3.21](releases/v2026.3.21.md) — Bug fixes: CancelledError handling, Sentry filter
 
@@ -8,6 +9,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+---
+
+## [2026.3.61] — 2026-03-06
+
+### Fixed
+- Lint/CI: remove unused TOPIC_LEAF_DEVICE_MSG import (F401); docstring en-dash to hyphen (RUF002); pytest match= raw string (RUF043)
 
 ---
 

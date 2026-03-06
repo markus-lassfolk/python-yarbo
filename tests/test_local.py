@@ -351,9 +351,9 @@ class TestYarboLocalClientPolling:
     async def test_polling_interval_validation(self, mock_transport):
         client = YarboLocalClient(broker="192.0.2.1", sn="TEST123")
         await client.connect()
-        with pytest.raises(ValueError, match="1.*3600"):
+        with pytest.raises(ValueError, match=r"1.*3600"):
             await client.start_polling(interval_seconds=0.5)
-        with pytest.raises(ValueError, match="1.*3600"):
+        with pytest.raises(ValueError, match=r"1.*3600"):
             await client.start_polling(interval_seconds=4000.0)
         await client.start_polling(interval_seconds=10.0)
         await client.stop_polling()
