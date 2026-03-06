@@ -58,7 +58,7 @@ See README.md for full documentation.
 
 from __future__ import annotations
 
-__version__ = "2026.3.12"
+__version__ = "2026.3.60"
 __author__ = "Markus Lassfolk"
 __license__ = "MIT"
 

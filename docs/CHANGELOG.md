@@ -1,4 +1,5 @@
 # Changelog
+- [v2026.3.60](releases/v2026.3.60.md) — Telemetry polling, optional get_controller, HASS coexistence
 - [v2026.3.21](releases/v2026.3.21.md) — Bug fixes: CancelledError handling, Sentry filter
 
 All notable changes to python-yarbo will be documented in this file.
@@ -7,6 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+---
+
+## [2026.3.60] — 2026-03-06
+
+### Added
+- Telemetry polling: `start_polling()`, `stop_polling()`, `is_polling`; 1–3600s interval, 1s when active
+- Optional get_controller: `get_status(acquire_controller=False)`, `start_polling(..., acquire_controller=False)` (defaults); app can stay in control
+- Docs: telemetry_mqtt_and_brokers.md (coexistence, two-broker test, why HASS may not see updates)
+- Scripts: monitor_telemetry_after_get_device_msg, test_two_brokers_telemetry, test_polling_with_app_in_control, check_telemetry_connection
+
+### Changed
+- get_status() / start_polling() no longer call get_controller by default
+- POLLING_INTERVAL_MIN = 1
 
 ---
 
