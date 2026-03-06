@@ -54,3 +54,40 @@ So telemetry polling does **not** need to take controller. That lets the app sta
 - **`start_polling(..., acquire_controller=True)`** — Calls `get_controller` before starting the poll loop (may take control from the app).
 
 **When to call get_controller:** Call `get_controller()` (or use `acquire_controller=True`) only when you are about to send **action commands** (lights, buzzer, chute, plans, manual drive, etc.). For telemetry only (get_status, watch_telemetry, polling), use the defaults so the app can remain in control.
+
+---
+
+## Why didn’t Home Assistant get updates when I ran the script?
+
+If you run `test_polling_with_app_in_control.py` (or any client that sends `get_device_msg`) against 192.168.1.55 and your HASS sensor (e.g. “last seen”) still doesn’t update, the cause is usually one of these:
+
+### 1. **Different topic for “last seen”**
+
+The robot has two ways it sends telemetry:
+
+- **`DeviceMSG`** — Streamed at ~1 Hz **only while the mobile app is connected**. Topic: `snowbot/{SN}/device/DeviceMSG`.
+- **`data_feedback`** — Response to a **request** (e.g. `get_device_msg`). Topic: `snowbot/{SN}/device/data_feedback`. Same payload shape as DeviceMSG.
+
+When our script runs, it triggers a response on **`data_feedback`**, not on `DeviceMSG`. The robot does not start streaming `DeviceMSG` again just because we sent `get_device_msg`.
+
+So if the HASS integration updates “last seen” **only** when it receives **`DeviceMSG`**, it will never see the traffic from the script. It will only see updates when the app is connected and the robot is streaming `DeviceMSG`.
+
+**What the integration should do:** Treat **both** as “activity” for last seen:
+
+- Subscribe to `snowbot/{SN}/device/DeviceMSG` **and** `snowbot/{SN}/device/data_feedback`.
+- For `data_feedback`, consider messages that look like telemetry (e.g. contain `BatteryMSG` or `StateMSG`) as activity and update “last seen” (and state) from them.
+
+Then any client that sends `get_device_msg` (including the integration itself when polling) will cause traffic that updates last seen.
+
+### 2. **Integration doesn’t poll**
+
+If the integration only **subscribes** and never sends `get_device_msg`, then when the app is disconnected there is no one asking for telemetry. The robot then only publishes `heart_beat` (no full telemetry). So “last seen” might be driven only by `DeviceMSG`, which has stopped.
+
+**What the integration should do:** When it needs telemetry (e.g. for sensors / last seen), it should **run polling**: call `start_polling()` (or periodically `get_status()`). That sends `get_device_msg` and receives telemetry on `data_feedback`. If the integration also updates last seen from `data_feedback` (see above), its own polling will keep “last seen” up to date.
+
+### 3. **Different broker or not subscribed**
+
+- **Same broker:** HASS must be connected to the **same** MQTT broker as the script (e.g. 192.168.1.55). If the integration is configured for 192.168.1.55 but actually uses another broker (e.g. a central Mosquitto that doesn’t receive Yarbo traffic), it won’t see the messages.
+- **Subscribed:** The integration must subscribe to the topic that carries the response — i.e. `data_feedback` (and ideally `DeviceMSG` too). If it only subscribes to `DeviceMSG`, it will never see the replies to `get_device_msg`.
+
+**Summary for hass-yarbo:** Use the same broker as the script (e.g. 192.168.1.55). Subscribe to both `DeviceMSG` and `data_feedback`. Update “last seen” (and sensor state) from **both** DeviceMSG and from data_feedback messages that contain telemetry. Run polling (e.g. `start_polling()`) so the robot is asked for telemetry periodically; then the integration will receive that telemetry on `data_feedback` and can update “last seen” even when the app is disconnected.
