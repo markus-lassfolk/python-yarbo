@@ -23,8 +23,7 @@ from yarbo.const import (
     TOPIC_LEAF_GET_DEVICE_MSG,
 )
 from yarbo.exceptions import YarboNotControllerError, YarboTimeoutError
-from yarbo.local import YarboLocalClient
-from yarbo.local import _payload_looks_like_device_msg
+from yarbo.local import YarboLocalClient, _payload_looks_like_device_msg
 
 
 async def run_test(broker: str, sn: str, duration_sec: float) -> None:

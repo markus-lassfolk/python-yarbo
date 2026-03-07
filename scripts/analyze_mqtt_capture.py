@@ -13,13 +13,13 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from collections import defaultdict
 import json
 import sys
-from collections import defaultdict
 
 
 def leaf(topic: str) -> str:
-    return topic.split("/")[-1] if "/" in topic else topic
+    return topic.rsplit("/", maxsplit=1)[-1] if "/" in topic else topic
 
 
 def keys_at_path(d: dict, prefix: str = "") -> set[str]:

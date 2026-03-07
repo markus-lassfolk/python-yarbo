@@ -156,7 +156,7 @@ async def run_monitor(
                         await client._ensure_controller()
                         await client._transport.publish(TOPIC_LEAF_GET_DEVICE_MSG, {})
                         trigger_sent_at = time.monotonic()
-                        print("Sent get_controller + get_device_msg at T+{:.1f}s\n".format(trigger_sent_at - t_start))
+                        print(f"Sent get_controller + get_device_msg at T+{trigger_sent_at - t_start:.1f}s\n")
                 rel = now - t_start
                 if not quiet:
                     print(f"  T+{rel:7.1f}s  {kind}")

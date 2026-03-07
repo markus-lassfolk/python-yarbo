@@ -193,11 +193,11 @@ def main() -> None:
     print(f"  Broker1 (sender) received: {df_b1} data_feedback, {result['all_b1'].get('heart_beat', 0)} heart_beat")
     print(f"  Broker2 (subscriber only) received: {df_b2} data_feedback, {result['all_b2'].get('heart_beat', 0)} heart_beat")
     if df_b1 >= 1:
-        print(f"  Response seen on broker1 (sender): YES")
+        print("  Response seen on broker1 (sender): YES")
     else:
         print("  Response seen on broker1 (sender): NO")
     if df_b2 >= 1:
-        print(f"  Response seen on broker2 (subscriber only): YES — traffic mirrored to second broker")
+        print("  Response seen on broker2 (subscriber only): YES — traffic mirrored to second broker")
     else:
         print("  Response seen on broker2 (subscriber only): NO")
 
