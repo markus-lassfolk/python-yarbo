@@ -131,9 +131,8 @@ def _extract_schedule_list(
 
 def _has_device_msg_keys(d: Any) -> bool:
     """True if d is a dict with BatteryMSG or StateMSG (DeviceMSG shape)."""
-    return (
-        isinstance(d, dict)
-        and (d.get("BatteryMSG") is not None or d.get("StateMSG") is not None)
+    return isinstance(d, dict) and (
+        d.get("BatteryMSG") is not None or d.get("StateMSG") is not None
     )
 
 
@@ -665,8 +664,7 @@ class YarboLocalClient:
                     return
                 # Start polling only if no telemetry received in the last _auto_poll_delay
                 if self._last_telemetry_received_at == 0 or (
-                    time.monotonic() - self._last_telemetry_received_at
-                    >= _auto_poll_delay
+                    time.monotonic() - self._last_telemetry_received_at >= _auto_poll_delay
                 ):
                     await self.start_polling()
 
