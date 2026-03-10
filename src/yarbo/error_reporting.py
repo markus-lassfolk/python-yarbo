@@ -65,8 +65,11 @@ def init_error_reporting(
     try:
         import sentry_sdk  # noqa: PLC0415
 
+        from yarbo import __version__  # noqa: PLC0415
+
         sentry_sdk.init(
             dsn=dsn,
+            release=f"python-yarbo@{__version__}",
             environment=environment,
             traces_sample_rate=0.1,
             send_default_pii=False,
